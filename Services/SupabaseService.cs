@@ -92,5 +92,31 @@ namespace BookkeepingBlazor.Services
             var list = JsonSerializer.Deserialize<List<Bill>>(respJson, options);
             return list?.FirstOrDefault();
         }
+
+        public async Task<List<Bill>> GetBillsByRangeAsync(DateOnly startDate, DateOnly endExclusive)
+        {
+            var url =
+                $"{SupabaseUrl}/rest/v1/bills" +
+                $"?select=*" +
+                $"&is_deleted=is.false" +
+                $"&bill_date=gte.{startDate:yyyy-MM-dd}" +
+                $"&bill_date=lt.{endExclusive:yyyy-MM-dd}" +
+                $"&order=bill_date.desc,id.desc";
+
+            var request = new HttpRequestMessage(HttpMethod.Get, url);
+            ApplyAuthHeaders(request);
+
+            var response = await _http.SendAsync(request);
+            response.EnsureSuccessStatusCode();
+
+            var json = await response.Content.ReadAsStringAsync();
+
+            var options = new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            };
+
+            return JsonSerializer.Deserialize<List<Bill>>(json, options) ?? new List<Bill>();
+        }
     }
 }

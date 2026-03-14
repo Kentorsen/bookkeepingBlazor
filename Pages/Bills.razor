@@ -1,55 +1,397 @@
-﻿@page "/bills"
+﻿@page "/"
+@page "/bills"
 @using BookkeepingBlazor.Models
-@inject BookkeepingBlazor.Services.SupabaseService Supabase
+@using BookkeepingBlazor.Services
+@inject SupabaseService Supabase
+@implements IDisposable
 
-<h3>账单列表</h3>
+<div class="bill-app">
+    <section class="top-panel">
+        <div class="date-card">
+            <button class="switch-btn" @onclick="GoPrevious" aria-label="上一项">‹</button>
 
-@if (bills == null)
-{
-    <p>加载中...</p>
-}
-else if (bills.Count == 0)
-{
-    <p>暂时没有账单。</p>
-}
-else
-{
-    <table class="table">
-        <thead>
-            <tr>
-                <th>日期</th>
-                <th>标题</th>
-                <th>金额</th>
-                <th>类型</th>
-            </tr>
-        </thead>
-        <tbody>
-            @foreach (var b in bills)
-            {
-                <tr>
-                    <td>@(b.BillDate?.ToString("yyyy-MM-dd"))</td>
-                    <td>@b.Title</td>
-                    <td>@b.Amount</td>
-                    <td>@(b.IoType == 1 ? "支出" : "收入")</td>
-                </tr>
-            }
-        </tbody>
-    </table>
-}
+            <div class="date-center"
+                 @onpointerdown="HandleDatePointerDown"
+                 @onpointerup="HandleDatePointerUp"
+                 @onpointerleave="HandleDatePointerLeave"
+                 @onclick="HandleDateAreaClick">
+                <div class="date-mode">@((CurrentMode == PeriodMode.Month) ? "按月" : "按日")</div>
+                <div class="date-title">@CurrentDisplayTitle</div>
+                <div class="date-tip">单击选择，长按切换</div>
+            </div>
+
+            <button class="switch-btn" @onclick="GoNext" aria-label="下一项">›</button>
+        </div>
+
+        @if (ShowPicker)
+        {
+            <div class="picker-panel">
+                @if (CurrentMode == PeriodMode.Month)
+                {
+                    <input type="month"
+                           class="picker-input"
+                           value="@MonthPickerValue"
+                           @onchange="OnMonthPickerChanged" />
+                }
+                else
+                {
+                    <input type="date"
+                           class="picker-input"
+                           value="@DayPickerValue"
+                           @onchange="OnDayPickerChanged" />
+                }
+
+                <div class="picker-actions">
+                    <button class="picker-btn light" @onclick="CancelPicker">取消</button>
+                    <button class="picker-btn primary" @onclick="ConfirmPickerAsync">确定</button>
+                </div>
+            </div>
+        }
+
+        <div class="summary-wrap">
+            <div class="summary-head">
+                <div class="summary-title">统计</div>
+                <div class="summary-dots">
+                    <span></span><span></span>
+                </div>
+            </div>
+
+            <div class="summary-track">
+                <section class="summary-page">
+                    <div class="summary-page-title">支出</div>
+
+                    <div class="mini-card">
+                        <div class="mini-name">依依</div>
+                        <div class="mini-big">@Fmt(Summary.ExpenseYiyiPersonal)</div>
+                        <div class="mini-sub">共同分摊 @Fmt(Summary.SharedExpenseHalf)</div>
+                        <div class="mini-total">总支出 @Fmt(Summary.YiyiExpenseTotal)</div>
+                    </div>
+
+                    <div class="mini-card">
+                        <div class="mini-name">一一</div>
+                        <div class="mini-big">@Fmt(Summary.ExpenseYiyi2Personal)</div>
+                        <div class="mini-sub">共同分摊 @Fmt(Summary.SharedExpenseHalf)</div>
+                        <div class="mini-total">总支出 @Fmt(Summary.Yiyi2ExpenseTotal)</div>
+                    </div>
+
+                    <div class="shared-line">共同支出：@Fmt(Summary.SharedExpense)</div>
+                </section>
+
+                <section class="summary-page">
+                    <div class="summary-page-title">收入 / 结余</div>
+
+                    <div class="mini-card income">
+                        <div class="mini-name">依依</div>
+                        <div class="mini-big">@Fmt(Summary.YiyiIncomeTotal)</div>
+                        <div class="mini-sub">个人 @Fmt(Summary.IncomeYiyiPersonal) · 共同分摊 @Fmt(Summary.SharedIncomeHalf)</div>
+                        <div class="mini-total balance">结余 @Fmt(Summary.YiyiBalance)</div>
+                    </div>
+
+                    <div class="mini-card income">
+                        <div class="mini-name">一一</div>
+                        <div class="mini-big">@Fmt(Summary.Yiyi2IncomeTotal)</div>
+                        <div class="mini-sub">个人 @Fmt(Summary.IncomeYiyi2Personal) · 共同分摊 @Fmt(Summary.SharedIncomeHalf)</div>
+                        <div class="mini-total balance">结余 @Fmt(Summary.Yiyi2Balance)</div>
+                    </div>
+
+                    <div class="shared-line">共同收入：@Fmt(Summary.SharedIncome)</div>
+                </section>
+            </div>
+        </div>
+    </section>
+
+    <section class="list-panel">
+        <div class="list-head">
+            <div class="list-title">账单记录</div>
+            <div class="list-count">@BillItems.Count 条</div>
+        </div>
+
+        @if (IsLoading)
+        {
+            <div class="empty-box">加载中...</div>
+        }
+        else if (BillItems.Count == 0)
+        {
+            <div class="empty-box">当前时间范围没有账单</div>
+        }
+        else
+        {
+            <div class="records-scroll">
+                @foreach (var group in GroupedBills)
+                {
+                    <section class="day-group">
+                        <div class="day-bar">
+                            <div>@group.Date.ToString("yyyy年MM月dd日")</div>
+                            <div>共 @group.Items.Count 条</div>
+                        </div>
+
+                        @foreach (var bill in group.Items)
+                        {
+                            <article class="bill-row">
+                                <div class="bill-left">
+                                    <div class="bill-title">@GetTitle(bill)</div>
+                                    <div class="bill-meta">
+                                        <span>@GetIoText(bill.IoType)</span>
+                                        <span>付款：@GetRoleNameForPayer(bill.PayerRoleId)</span>
+                                        <span>所属：@GetRoleNameForOwner(bill.OwnerRoleId)</span>
+                                    </div>
+                                </div>
+
+                                <div class="bill-amount @(bill.IoType == 1 ? "expense" : "income")">
+                                    @(bill.IoType == 1 ? "-" : "+")@Fmt(bill.Amount)
+                                </div>
+                            </article>
+                        }
+                    </section>
+                }
+            </div>
+        }
+    </section>
+</div>
 
 @code {
-    private List<Bill>? bills;
+    private const long RoleYiyi = 1;
+    private const long RoleYiyi2 = 2;
+    private const long RoleShared = 3;
+
+    private enum PeriodMode
+    {
+        Month,
+        Day
+    }
+
+    private sealed record BillDayGroup(DateOnly Date, List<Bill> Items);
+
+    private sealed class BillSummary
+    {
+        public decimal ExpenseYiyiPersonal { get; set; }
+        public decimal ExpenseYiyi2Personal { get; set; }
+        public decimal SharedExpense { get; set; }
+        public decimal SharedExpenseHalf => SharedExpense / 2m;
+        public decimal YiyiExpenseTotal => ExpenseYiyiPersonal + SharedExpenseHalf;
+        public decimal Yiyi2ExpenseTotal => ExpenseYiyi2Personal + SharedExpenseHalf;
+
+        public decimal IncomeYiyiPersonal { get; set; }
+        public decimal IncomeYiyi2Personal { get; set; }
+        public decimal SharedIncome { get; set; }
+        public decimal SharedIncomeHalf => SharedIncome / 2m;
+        public decimal YiyiIncomeTotal => IncomeYiyiPersonal + SharedIncomeHalf;
+        public decimal Yiyi2IncomeTotal => IncomeYiyi2Personal + SharedIncomeHalf;
+
+        public decimal YiyiBalance => YiyiIncomeTotal - YiyiExpenseTotal;
+        public decimal Yiyi2Balance => Yiyi2IncomeTotal - Yiyi2ExpenseTotal;
+    }
+
+    private PeriodMode CurrentMode = PeriodMode.Month;
+    private DateOnly FocusedDate = DateOnly.FromDateTime(DateTime.Today);
+
+    private bool IsLoading = true;
+    private bool ShowPicker = false;
+    private bool IgnoreNextClick = false;
+
+    private string MonthPickerValue = "";
+    private string DayPickerValue = "";
+
+    private CancellationTokenSource? LongPressCts;
+
+    private List<Bill> BillItems = new();
+    private BillSummary Summary = new();
+
+    private string CurrentDisplayTitle =>
+        CurrentMode == PeriodMode.Month
+            ? $"{FocusedDate.Year}年{FocusedDate.Month:D2}月"
+            : $"{FocusedDate.Year}年{FocusedDate.Month:D2}月{FocusedDate.Day:D2}日";
+
+    private List<BillDayGroup> GroupedBills =>
+        BillItems
+            .OrderByDescending(x => x.BillDate)
+            .ThenByDescending(x => x.Id)
+            .GroupBy(x => x.BillDate.HasValue
+                ? DateOnly.FromDateTime(x.BillDate.Value)
+                : FocusedDate)
+            .Select(g => new BillDayGroup(g.Key, g.ToList()))
+            .ToList();
 
     protected override async Task OnInitializedAsync()
     {
+        SyncPickerValue();
+        await LoadBillsAsync();
+    }
+
+    private async Task LoadBillsAsync()
+    {
+        IsLoading = true;
+        StateHasChanged();
+
         try
         {
-            bills = await Supabase.GetBillsAsync();
+            var (start, endExclusive) = GetRange();
+            BillItems = await Supabase.GetBillsByRangeAsync(start, endExclusive);
+            Summary = BuildSummary(BillItems);
         }
-        catch (Exception ex)
+        finally
         {
-            Console.WriteLine(ex);
-            bills = new();
+            IsLoading = false;
+            StateHasChanged();
         }
+    }
+
+    private (DateOnly Start, DateOnly EndExclusive) GetRange()
+    {
+        if (CurrentMode == PeriodMode.Month)
+        {
+            var start = new DateOnly(FocusedDate.Year, FocusedDate.Month, 1);
+            return (start, start.AddMonths(1));
+        }
+
+        return (FocusedDate, FocusedDate.AddDays(1));
+    }
+
+    private BillSummary BuildSummary(List<Bill> source)
+    {
+        var result = new BillSummary();
+
+        var expenses = source.Where(x => x.IoType == 1).ToList();
+        var incomes = source.Where(x => x.IoType == 2).ToList();
+
+        result.ExpenseYiyiPersonal = expenses.Where(x => x.PayerRoleId == RoleYiyi).Sum(x => x.Amount);
+        result.ExpenseYiyi2Personal = expenses.Where(x => x.PayerRoleId == RoleYiyi2).Sum(x => x.Amount);
+        result.SharedExpense = expenses.Where(x => x.PayerRoleId == RoleShared).Sum(x => x.Amount);
+
+        result.IncomeYiyiPersonal = incomes.Where(x => ResolveIncomeRole(x) == RoleYiyi).Sum(x => x.Amount);
+        result.IncomeYiyi2Personal = incomes.Where(x => ResolveIncomeRole(x) == RoleYiyi2).Sum(x => x.Amount);
+        result.SharedIncome = incomes.Where(x => ResolveIncomeRole(x) == RoleShared).Sum(x => x.Amount);
+
+        return result;
+    }
+
+    private long? ResolveIncomeRole(Bill bill) => bill.OwnerRoleId ?? bill.PayerRoleId;
+
+    private async Task GoPrevious()
+    {
+        FocusedDate = CurrentMode == PeriodMode.Month ? FocusedDate.AddMonths(-1) : FocusedDate.AddDays(-1);
+        SyncPickerValue();
+        ShowPicker = false;
+        await LoadBillsAsync();
+    }
+
+    private async Task GoNext()
+    {
+        FocusedDate = CurrentMode == PeriodMode.Month ? FocusedDate.AddMonths(1) : FocusedDate.AddDays(1);
+        SyncPickerValue();
+        ShowPicker = false;
+        await LoadBillsAsync();
+    }
+
+    private void SyncPickerValue()
+    {
+        MonthPickerValue = $"{FocusedDate:yyyy-MM}";
+        DayPickerValue = $"{FocusedDate:yyyy-MM-dd}";
+    }
+
+    private async Task HandleDatePointerDown()
+    {
+        LongPressCts?.Cancel();
+        LongPressCts = new CancellationTokenSource();
+
+        try
+        {
+            await Task.Delay(550, LongPressCts.Token);
+            CurrentMode = CurrentMode == PeriodMode.Month ? PeriodMode.Day : PeriodMode.Month;
+            IgnoreNextClick = true;
+            ShowPicker = true;
+            SyncPickerValue();
+            StateHasChanged();
+        }
+        catch (TaskCanceledException)
+        {
+        }
+    }
+
+    private void HandleDatePointerUp() => LongPressCts?.Cancel();
+    private void HandleDatePointerLeave() => LongPressCts?.Cancel();
+
+    private void HandleDateAreaClick()
+    {
+        if (IgnoreNextClick)
+        {
+            IgnoreNextClick = false;
+            return;
+        }
+
+        ShowPicker = !ShowPicker;
+        SyncPickerValue();
+    }
+
+    private void OnMonthPickerChanged(ChangeEventArgs e)
+    {
+        MonthPickerValue = e.Value?.ToString() ?? "";
+    }
+
+    private void OnDayPickerChanged(ChangeEventArgs e)
+    {
+        DayPickerValue = e.Value?.ToString() ?? "";
+    }
+
+    private async Task ConfirmPickerAsync()
+    {
+        if (CurrentMode == PeriodMode.Month)
+        {
+            if (!string.IsNullOrWhiteSpace(MonthPickerValue))
+            {
+                var parts = MonthPickerValue.Split('-');
+                if (parts.Length == 2 &&
+                    int.TryParse(parts[0], out var year) &&
+                    int.TryParse(parts[1], out var month))
+                {
+                    var day = Math.Min(FocusedDate.Day, DateTime.DaysInMonth(year, month));
+                    FocusedDate = new DateOnly(year, month, day);
+                }
+            }
+        }
+        else
+        {
+            if (DateOnly.TryParse(DayPickerValue, out var selectedDate))
+            {
+                FocusedDate = selectedDate;
+            }
+        }
+
+        ShowPicker = false;
+        await LoadBillsAsync();
+    }
+
+    private void CancelPicker()
+    {
+        ShowPicker = false;
+        SyncPickerValue();
+    }
+
+    private string Fmt(decimal value) => value.ToString("0.##");
+
+    private string GetTitle(Bill bill) => string.IsNullOrWhiteSpace(bill.Title) ? "未命名账单" : bill.Title!;
+
+    private string GetIoText(short ioType) => ioType == 1 ? "支出" : "收入";
+
+    private string GetRoleNameForPayer(long? roleId) => roleId switch
+    {
+        RoleYiyi => "依依",
+        RoleYiyi2 => "一一",
+        RoleShared => "共同",
+        _ => "未知"
+    };
+
+    private string GetRoleNameForOwner(long? roleId) => roleId switch
+    {
+        RoleYiyi => "依依",
+        RoleYiyi2 => "一一",
+        RoleShared => "共同",
+        _ => "未指定"
+    };
+
+    public void Dispose()
+    {
+        LongPressCts?.Cancel();
+        LongPressCts?.Dispose();
     }
 }
