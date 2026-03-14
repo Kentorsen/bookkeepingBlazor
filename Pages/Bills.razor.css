@@ -4,86 +4,98 @@
     overflow: hidden;
     display: flex;
     flex-direction: column;
-    background: #f5f6f8;
+    background: #f6f7f9;
     color: #1f2430;
 }
 
-.top-panel {
+.region1 {
     flex: 0 0 auto;
-    padding: 10px 10px 6px;
-    background: #f5f6f8;
-}
-
-.date-card {
     display: grid;
-    grid-template-columns: 40px 1fr 40px;
-    gap: 8px;
-    align-items: center;
+    grid-template-columns: 44px 1fr 44px;
+    gap: 0;
+    align-items: stretch;
+    margin: 8px 8px 0;
     background: #ffffff;
-    border-radius: 16px;
-    padding: 8px;
-    box-shadow: 0 2px 10px rgba(0,0,0,.04);
-}
-
-.switch-btn {
-    width: 40px;
-    height: 40px;
-    border: none;
-    border-radius: 12px;
-    background: #f3f4f7;
-    color: #45506a;
-    font-size: 22px;
-}
-
-.date-center {
-    min-height: 64px;
     border-radius: 14px;
-    background: #f7f9fc;
-    border: 1px solid #edf0f5;
-    padding: 8px 10px;
+    overflow: hidden;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, .04);
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+}
+
+.r1-arrow {
+    border: none;
+    background: #ffffff;
+    color: #4f5972;
+    font-size: 24px;
+    line-height: 1;
+    margin: 0;
+    padding: 0;
+    min-height: 50px;
+}
+
+    .r1-arrow:active {
+        background: #f3f5f8;
+    }
+
+.r1-center {
+    min-height: 50px;
+    padding: 6px 8px;
     display: flex;
     flex-direction: column;
     justify-content: center;
+    text-align: center;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
 }
 
-.date-mode {
-    font-size: 11px;
-    color: #7c859a;
+.r1-title {
+    font-size: 16px;
+    font-weight: 800;
+    color: #1f2740;
+    line-height: 1.2;
+}
+
+.r1-mode-line {
+    margin-top: 3px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    flex-wrap: wrap;
     line-height: 1.1;
 }
 
-.date-title {
-    font-size: 17px;
-    font-weight: 800;
-    color: #1d2742;
-    margin-top: 2px;
-    line-height: 1.2;
+.r1-mode {
+    font-size: 11px;
+    color: #ef9cb8;
+    font-weight: 700;
 }
 
-.date-tip {
+.r1-tip {
     font-size: 11px;
-    color: #9aa3b6;
-    margin-top: 4px;
-    line-height: 1.2;
+    color: #8e96a8;
 }
 
 .picker-panel {
-    margin-top: 8px;
+    margin: 8px 8px 0;
     background: #fff;
-    border-radius: 14px;
+    border-radius: 12px;
     padding: 10px;
-    box-shadow: 0 2px 10px rgba(0,0,0,.04);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, .04);
 }
 
 .picker-input {
     width: 100%;
-    height: 40px;
+    height: 38px;
     border: 1px solid #e6eaf1;
     border-radius: 10px;
     padding: 0 10px;
     box-sizing: border-box;
     background: #fff;
-    font-size: 15px;
+    font-size: 14px;
 }
 
 .picker-actions {
@@ -94,7 +106,7 @@
 
 .picker-btn {
     flex: 1;
-    height: 38px;
+    height: 36px;
     border-radius: 10px;
     border: none;
     font-size: 14px;
@@ -106,128 +118,165 @@
     }
 
     .picker-btn.primary {
-        background: #7ea8ff;
+        background: #84a4ff;
         color: #fff;
     }
 
-.summary-wrap {
-    margin-top: 8px;
+.region2 {
+    flex: 0 0 auto;
+    margin: 8px 8px 0;
     background: #fff;
-    border-radius: 16px;
-    padding: 10px;
-    box-shadow: 0 2px 10px rgba(0,0,0,.04);
-}
-
-.summary-head {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 8px;
-}
-
-.summary-title {
-    font-size: 15px;
-    font-weight: 800;
-}
-
-.summary-dots {
-    display: flex;
-    gap: 5px;
-}
-
-    .summary-dots span {
-        width: 7px;
-        height: 7px;
-        border-radius: 50%;
-        background: #bdd0ff;
-    }
-
-.summary-track {
-    display: grid;
-    grid-auto-flow: column;
-    grid-auto-columns: 100%;
-    overflow-x: auto;
-    gap: 8px;
-    scroll-snap-type: x mandatory;
-    -ms-overflow-style: none;
-    scrollbar-width: none;
-}
-
-    .summary-track::-webkit-scrollbar {
-        display: none;
-    }
-
-.summary-page {
-    scroll-snap-align: start;
-    background: #fafbfc;
     border-radius: 14px;
-    padding: 10px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, .04);
+    overflow: hidden;
 }
 
-.summary-page-title {
-    font-size: 14px;
-    font-weight: 800;
-    margin-bottom: 8px;
+.r2-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 10px 6px;
 }
 
-.mini-card {
-    background: #fff;
-    border: 1px solid #edf0f5;
-    border-radius: 12px;
-    padding: 10px;
-    margin-bottom: 8px;
+.r2-dots {
+    display: flex;
+    align-items: center;
+    gap: 6px;
 }
 
-    .mini-card.income {
-        background: #fbfffc;
+.dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 999px;
+    border: none;
+    background: #d7dce7;
+    padding: 0;
+    transition: all .2s ease;
+}
+
+    .dot.active {
+        width: 18px;
+        background: #8facff;
     }
 
-.mini-name {
+.collapse-btn {
+    border: none;
+    background: transparent;
+    color: #7b869c;
     font-size: 12px;
-    color: #7d879a;
+    font-weight: 700;
+    padding: 2px 0;
 }
 
-.mini-big {
-    font-size: 22px;
-    font-weight: 900;
-    margin-top: 2px;
-    line-height: 1.1;
-    color: #22304d;
+.r2-viewport {
+    overflow: hidden;
+    width: 100%;
 }
 
-.mini-sub {
-    margin-top: 4px;
+.r2-slider {
+    display: flex;
+    width: 200%;
+    transition: transform .3s ease;
+    will-change: transform;
+}
+
+    .r2-slider.expense-page {
+        transform: translateX(0%);
+    }
+
+    .r2-slider.income-page {
+        transform: translateX(-50%);
+    }
+
+.r2-page {
+    flex: 0 0 50%;
+    box-sizing: border-box;
+    padding: 0 10px 10px;
+}
+
+.r2-title {
+    font-size: 13px;
+    font-weight: 800;
+    color: #27314a;
+    margin-bottom: 6px;
+}
+
+.r2-person-row {
+    display: grid;
+    grid-template-columns: 1fr 88px;
+    gap: 8px;
+    padding: 8px 0;
+    border-bottom: 1px solid #eef1f5;
+}
+
+    .r2-person-row:last-of-type {
+        border-bottom: none;
+    }
+
+.r2-left {
+    min-width: 0;
+}
+
+.r2-name {
+    font-size: 13px;
+    font-weight: 800;
+    color: #222c46;
+    margin-bottom: 3px;
+}
+
+.r2-line {
     font-size: 12px;
+    color: #7c8598;
+    line-height: 1.45;
+}
+
+.r2-right {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: flex-end;
+}
+
+.r2-total-label {
+    font-size: 11px;
     color: #8a94a8;
 }
 
-.mini-total {
-    margin-top: 6px;
-    font-size: 13px;
-    font-weight: 800;
-    color: #ef6b82;
+.r2-total {
+    margin-top: 2px;
+    font-size: 20px;
+    font-weight: 900;
+    line-height: 1.1;
 }
 
-    .mini-total.balance {
-        color: #1aa56b;
+    .r2-total.expense {
+        color: #ec6a82;
     }
 
-.shared-line {
+    .r2-total.income {
+        color: #19a867;
+    }
+
+.r2-footer {
+    margin-top: 6px;
     font-size: 12px;
-    color: #6e7890;
-    padding: 2px 2px 0;
+    color: #69748c;
 }
 
-.list-panel {
+.r2-footer-note {
+    color: #8b94a8;
+}
+
+.region3 {
     flex: 1 1 auto;
     min-height: 0;
     display: flex;
     flex-direction: column;
-    padding: 0 10px 10px;
+    padding: 0 8px 8px;
     overflow: hidden;
 }
 
-.list-head {
+.r3-head {
     flex: 0 0 auto;
     display: flex;
     justify-content: space-between;
@@ -235,14 +284,14 @@
     padding: 8px 2px;
 }
 
-.list-title {
+.r3-title {
     font-size: 15px;
     font-weight: 800;
 }
 
-.list-count {
+.r3-count {
     font-size: 12px;
-    color: #7f889c;
+    color: #80899d;
 }
 
 .records-scroll {
@@ -250,7 +299,7 @@
     min-height: 0;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
-    padding-bottom: 16px;
+    padding-bottom: 14px;
 }
 
 .day-group {
@@ -259,26 +308,76 @@
 
 .day-bar {
     background: #eef1f5;
+    color: #5f687d;
     border-radius: 12px;
     padding: 8px 10px;
-    font-size: 12px;
-    color: #5d6880;
     display: flex;
     justify-content: space-between;
+    gap: 10px;
     align-items: center;
     margin-bottom: 6px;
+}
+
+    .day-bar.weekend {
+        background: #fff1f5;
+        color: #cc749b;
+    }
+
+    .day-bar.today {
+        background: #e8f5ff;
+        color: #3e8bc8;
+    }
+
+.day-left {
+    min-width: 0;
+}
+
+.day-title {
+    font-size: 13px;
+    font-weight: 800;
+    line-height: 1.2;
+}
+
+.day-sub {
+    font-size: 11px;
+    margin-top: 2px;
+    opacity: .92;
+}
+
+.day-right {
+    text-align: right;
+    white-space: nowrap;
+}
+
+.day-summary {
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1.2;
+}
+
+.day-count {
+    font-size: 11px;
+    margin-top: 2px;
+    opacity: .92;
 }
 
 .bill-row {
     background: #fff;
     border-radius: 14px;
     padding: 10px 12px;
+    margin-bottom: 6px;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, .03);
     display: grid;
     grid-template-columns: 1fr auto;
-    gap: 10px;
-    align-items: center;
-    margin-bottom: 6px;
-    box-shadow: 0 1px 4px rgba(0,0,0,.03);
+    grid-template-areas:
+        "main amount"
+        "meta meta";
+    gap: 8px 10px;
+}
+
+.bill-main-top {
+    grid-area: main;
+    min-width: 0;
 }
 
 .bill-title {
@@ -286,22 +385,43 @@
     font-weight: 700;
     color: #1f2940;
     line-height: 1.3;
+    word-break: break-word;
 }
 
-.bill-meta {
-    margin-top: 4px;
+.bill-category-line {
+    margin-top: 7px;
     display: flex;
     flex-wrap: wrap;
-    gap: 8px;
-    font-size: 11px;
-    color: #8a93a7;
-    line-height: 1.3;
+    gap: 6px;
 }
 
+.category-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1;
+}
+
+    .category-chip.main {
+        background: #fff2df;
+        color: #b57b18;
+    }
+
+    .category-chip.sub {
+        background: #eef3ff;
+        color: #6981c6;
+    }
+
 .bill-amount {
+    grid-area: amount;
     font-size: 18px;
-    font-weight: 800;
+    font-weight: 900;
     white-space: nowrap;
+    line-height: 1.1;
+    align-self: center;
 }
 
     .bill-amount.expense {
@@ -311,6 +431,29 @@
     .bill-amount.income {
         color: #18a867;
     }
+
+.bill-meta-row {
+    grid-area: meta;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 8px;
+    align-items: start;
+    font-size: 11px;
+    color: #8a93a7;
+}
+
+.meta-left,
+.meta-right {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    line-height: 1.35;
+}
+
+.meta-right {
+    justify-content: flex-end;
+    text-align: right;
+}
 
 .empty-box {
     background: #fff;

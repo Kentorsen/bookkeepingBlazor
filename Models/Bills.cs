@@ -1,4 +1,5 @@
-﻿using System.Text.Json.Serialization;
+﻿using System;
+using System.Text.Json.Serialization;
 
 namespace BookkeepingBlazor.Models
 {
@@ -10,11 +11,11 @@ namespace BookkeepingBlazor.Models
         [JsonPropertyName("io_type")]
         public short IoType { get; set; }
 
-        [JsonPropertyName("main_category")]
-        public long? MainCategory { get; set; }
+        [JsonPropertyName("main_category_id")]
+        public long MainCategoryId { get; set; }
 
-        [JsonPropertyName("sub_category")]
-        public long? SubCategory { get; set; }
+        [JsonPropertyName("sub_category_id")]
+        public long? SubCategoryId { get; set; }
 
         [JsonPropertyName("title")]
         public string? Title { get; set; }
@@ -23,10 +24,10 @@ namespace BookkeepingBlazor.Models
         public decimal Amount { get; set; }
 
         [JsonPropertyName("owner_role_id")]
-        public long? OwnerRoleId { get; set; }
+        public long OwnerRoleId { get; set; }
 
         [JsonPropertyName("payer_role_id")]
-        public long? PayerRoleId { get; set; }
+        public long PayerRoleId { get; set; }
 
         [JsonPropertyName("bill_date")]
         public DateTime? BillDate { get; set; }
@@ -35,7 +36,7 @@ namespace BookkeepingBlazor.Models
         public bool IsExtra { get; set; }
 
         [JsonPropertyName("marked_payer_role_id")]
-        public long? MarkedPayerRoleId { get; set; }
+        public long MarkedPayerRoleId { get; set; }
 
         [JsonPropertyName("is_deleted")]
         public bool IsDeleted { get; set; }

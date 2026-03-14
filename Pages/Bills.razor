@@ -6,104 +6,143 @@
 @implements IDisposable
 
 <div class="bill-app">
-    <section class="top-panel">
-        <div class="date-card">
-            <button class="switch-btn" @onclick="GoPrevious" aria-label="上一项">‹</button>
+    <section class="region1">
+        <button class="r1-arrow" @onclick="GoPrevious" aria-label="上一项">‹</button>
 
-            <div class="date-center"
-                 @onpointerdown="HandleDatePointerDown"
-                 @onpointerup="HandleDatePointerUp"
-                 @onpointerleave="HandleDatePointerLeave"
-                 @onclick="HandleDateAreaClick">
-                <div class="date-mode">@((CurrentMode == PeriodMode.Month) ? "按月" : "按日")</div>
-                <div class="date-title">@CurrentDisplayTitle</div>
-                <div class="date-tip">单击选择，长按切换</div>
+        <div class="r1-center"
+             @onpointerdown="HandleDatePointerDown"
+             @onpointerup="HandleDatePointerUp"
+             @onpointerleave="HandleDatePointerLeave"
+             @onclick="HandleDateAreaClick">
+            <div class="r1-title">@CurrentDisplayTitle</div>
+            <div class="r1-mode-line">
+                <span class="r1-mode">@((CurrentMode == PeriodMode.Month) ? "按月" : "按日")</span>
+                <span class="r1-tip">（单击选择，长按切换）</span>
             </div>
-
-            <button class="switch-btn" @onclick="GoNext" aria-label="下一项">›</button>
         </div>
 
-        @if (ShowPicker)
-        {
-            <div class="picker-panel">
-                @if (CurrentMode == PeriodMode.Month)
-                {
-                    <input type="month"
-                           class="picker-input"
-                           value="@MonthPickerValue"
-                           @onchange="OnMonthPickerChanged" />
-                }
-                else
-                {
-                    <input type="date"
-                           class="picker-input"
-                           value="@DayPickerValue"
-                           @onchange="OnDayPickerChanged" />
-                }
+        <button class="r1-arrow" @onclick="GoNext" aria-label="下一项">›</button>
+    </section>
 
-                <div class="picker-actions">
-                    <button class="picker-btn light" @onclick="CancelPicker">取消</button>
-                    <button class="picker-btn primary" @onclick="ConfirmPickerAsync">确定</button>
+    @if (ShowPicker)
+    {
+        <div class="picker-panel">
+            @if (CurrentMode == PeriodMode.Month)
+            {
+                <input type="month"
+                       class="picker-input"
+                       value="@MonthPickerValue"
+                       @onchange="OnMonthPickerChanged" />
+            }
+            else
+            {
+                <input type="date"
+                       class="picker-input"
+                       value="@DayPickerValue"
+                       @onchange="OnDayPickerChanged" />
+            }
+
+            <div class="picker-actions">
+                <button class="picker-btn light" @onclick="CancelPicker">取消</button>
+                <button class="picker-btn primary" @onclick="ConfirmPickerAsync">确定</button>
+            </div>
+        </div>
+    }
+
+    <section class="region2">
+        <div class="r2-head">
+            <div class="r2-dots">
+                <button class="dot @(CurrentSummaryPage == SummaryPage.Expense ? "active" : "")"
+                        @onclick="@(() => SetSummaryPage(SummaryPage.Expense))"
+                        aria-label="支出页"></button>
+                <button class="dot @(CurrentSummaryPage == SummaryPage.Income ? "active" : "")"
+                        @onclick="@(() => SetSummaryPage(SummaryPage.Income))"
+                        aria-label="收入页"></button>
+            </div>
+
+            <button class="collapse-btn" @onclick="ToggleSummaryCollapsed">
+                @(IsSummaryCollapsed ? "展开" : "收起")
+            </button>
+        </div>
+
+        @if (!IsSummaryCollapsed)
+        {
+            <div class="r2-viewport"
+                 @onpointerdown="HandleSummaryPointerDown"
+                 @onpointerup="HandleSummaryPointerUp"
+                 @onpointerleave="HandleSummaryPointerLeave">
+
+                <div class="r2-slider @(CurrentSummaryPage == SummaryPage.Income ? "income-page" : "expense-page")">
+                    <section class="r2-page">
+                        <div class="r2-title">支出</div>
+
+                        <div class="r2-person-row">
+                            <div class="r2-left">
+                                <div class="r2-name">@NameYiyi</div>
+                                <div class="r2-line">个人付款 @Fmt(Summary.ExpenseYiyiPersonal)</div>
+                            </div>
+                            <div class="r2-right">
+                                <div class="r2-total-label">总支出</div>
+                                <div class="r2-total expense">@Fmt(Summary.YiyiExpenseTotal)</div>
+                            </div>
+                        </div>
+
+                        <div class="r2-person-row">
+                            <div class="r2-left">
+                                <div class="r2-name">@NameYiyi2</div>
+                                <div class="r2-line">个人付款 @Fmt(Summary.ExpenseYiyi2Personal)</div>
+                            </div>
+                            <div class="r2-right">
+                                <div class="r2-total-label">总支出</div>
+                                <div class="r2-total expense">@Fmt(Summary.Yiyi2ExpenseTotal)</div>
+                            </div>
+                        </div>
+
+                        <div class="r2-footer">
+                            共同支出：@Fmt(Summary.SharedExpense)
+                            <span class="r2-footer-note">（每人分摊 @Fmt(Summary.SharedExpenseHalf)）</span>
+                        </div>
+                    </section>
+
+                    <section class="r2-page">
+                        <div class="r2-title">收入 / 结余</div>
+
+                        <div class="r2-person-row">
+                            <div class="r2-left">
+                                <div class="r2-name">@NameYiyi</div>
+                                <div class="r2-line">个人收入 @Fmt(Summary.IncomeYiyiPersonal)</div>
+                            </div>
+                            <div class="r2-right">
+                                <div class="r2-total-label">结余</div>
+                                <div class="r2-total income">@Fmt(Summary.YiyiBalance)</div>
+                            </div>
+                        </div>
+
+                        <div class="r2-person-row">
+                            <div class="r2-left">
+                                <div class="r2-name">@NameYiyi2</div>
+                                <div class="r2-line">个人收入 @Fmt(Summary.IncomeYiyi2Personal)</div>
+                            </div>
+                            <div class="r2-right">
+                                <div class="r2-total-label">结余</div>
+                                <div class="r2-total income">@Fmt(Summary.Yiyi2Balance)</div>
+                            </div>
+                        </div>
+
+                        <div class="r2-footer">
+                            共同收入：@Fmt(Summary.SharedIncome)
+                            <span class="r2-footer-note">（每人分摊 @Fmt(Summary.SharedIncomeHalf)）</span>
+                        </div>
+                    </section>
                 </div>
             </div>
         }
-
-        <div class="summary-wrap">
-            <div class="summary-head">
-                <div class="summary-title">统计</div>
-                <div class="summary-dots">
-                    <span></span><span></span>
-                </div>
-            </div>
-
-            <div class="summary-track">
-                <section class="summary-page">
-                    <div class="summary-page-title">支出</div>
-
-                    <div class="mini-card">
-                        <div class="mini-name">依依</div>
-                        <div class="mini-big">@Fmt(Summary.ExpenseYiyiPersonal)</div>
-                        <div class="mini-sub">共同分摊 @Fmt(Summary.SharedExpenseHalf)</div>
-                        <div class="mini-total">总支出 @Fmt(Summary.YiyiExpenseTotal)</div>
-                    </div>
-
-                    <div class="mini-card">
-                        <div class="mini-name">一一</div>
-                        <div class="mini-big">@Fmt(Summary.ExpenseYiyi2Personal)</div>
-                        <div class="mini-sub">共同分摊 @Fmt(Summary.SharedExpenseHalf)</div>
-                        <div class="mini-total">总支出 @Fmt(Summary.Yiyi2ExpenseTotal)</div>
-                    </div>
-
-                    <div class="shared-line">共同支出：@Fmt(Summary.SharedExpense)</div>
-                </section>
-
-                <section class="summary-page">
-                    <div class="summary-page-title">收入 / 结余</div>
-
-                    <div class="mini-card income">
-                        <div class="mini-name">依依</div>
-                        <div class="mini-big">@Fmt(Summary.YiyiIncomeTotal)</div>
-                        <div class="mini-sub">个人 @Fmt(Summary.IncomeYiyiPersonal) · 共同分摊 @Fmt(Summary.SharedIncomeHalf)</div>
-                        <div class="mini-total balance">结余 @Fmt(Summary.YiyiBalance)</div>
-                    </div>
-
-                    <div class="mini-card income">
-                        <div class="mini-name">一一</div>
-                        <div class="mini-big">@Fmt(Summary.Yiyi2IncomeTotal)</div>
-                        <div class="mini-sub">个人 @Fmt(Summary.IncomeYiyi2Personal) · 共同分摊 @Fmt(Summary.SharedIncomeHalf)</div>
-                        <div class="mini-total balance">结余 @Fmt(Summary.Yiyi2Balance)</div>
-                    </div>
-
-                    <div class="shared-line">共同收入：@Fmt(Summary.SharedIncome)</div>
-                </section>
-            </div>
-        </div>
     </section>
 
-    <section class="list-panel">
-        <div class="list-head">
-            <div class="list-title">账单记录</div>
-            <div class="list-count">@BillItems.Count 条</div>
+    <section class="region3">
+        <div class="r3-head">
+            <div class="r3-title">账单记录</div>
+            <div class="r3-count">@BillItems.Count 条</div>
         </div>
 
         @if (IsLoading)
@@ -120,25 +159,46 @@
                 @foreach (var group in GroupedBills)
                 {
                     <section class="day-group">
-                        <div class="day-bar">
-                            <div>@group.Date.ToString("yyyy年MM月dd日")</div>
-                            <div>共 @group.Items.Count 条</div>
+                        <div class="day-bar @GetDayBarClass(group.Date)">
+                            <div class="day-left">
+                                <div class="day-title">@GetDayTitle(group.Date)</div>
+                                <div class="day-sub">@GetWeekText(group.Date)</div>
+                            </div>
+
+                            <div class="day-right">
+                                <div class="day-summary">收 @Fmt(group.Income) / 支 @Fmt(group.Expense)</div>
+                                <div class="day-count">共 @group.Items.Count 条</div>
+                            </div>
                         </div>
 
                         @foreach (var bill in group.Items)
                         {
                             <article class="bill-row">
-                                <div class="bill-left">
+                                <div class="bill-main-top">
                                     <div class="bill-title">@GetTitle(bill)</div>
-                                    <div class="bill-meta">
-                                        <span>@GetIoText(bill.IoType)</span>
-                                        <span>付款：@GetRoleNameForPayer(bill.PayerRoleId)</span>
-                                        <span>所属：@GetRoleNameForOwner(bill.OwnerRoleId)</span>
+
+                                    <div class="bill-category-line">
+                                        <span class="category-chip main">@GetMainCategoryName(bill.MainCategoryId)</span>
+                                        @if (bill.SubCategoryId.HasValue && bill.SubCategoryId.Value > 0 && HasSubCategoryName(bill.SubCategoryId.Value))
+                                        {
+                                            <span class="category-chip sub">@GetSubCategoryName(bill.SubCategoryId.Value)</span>
+                                        }
                                     </div>
                                 </div>
 
                                 <div class="bill-amount @(bill.IoType == 1 ? "expense" : "income")">
                                     @(bill.IoType == 1 ? "-" : "+")@Fmt(bill.Amount)
+                                </div>
+
+                                <div class="bill-meta-row">
+                                    <div class="meta-left">
+                                        <span>所属：@GetRoleName(bill.OwnerRoleId)</span>
+                                        <span>付款：@GetRoleName(bill.PayerRoleId)</span>
+                                    </div>
+                                    <div class="meta-right">
+                                        <span>记录：@GetUserName(bill.CreatedBy)</span>
+                                        <span>更新：@GetUserName(bill.UpdatedBy)</span>
+                                    </div>
                                 </div>
                             </article>
                         }
@@ -150,9 +210,13 @@
 </div>
 
 @code {
-    private const long RoleYiyi = 1;
-    private const long RoleYiyi2 = 2;
-    private const long RoleShared = 3;
+    private const string NameYiyi = "依依";
+    private const string NameYiyi2 = "一一";
+    private const string NameShared = "共同";
+
+    private const long DefaultYiyiRoleId = 2;
+    private const long DefaultYiyi2RoleId = 1;
+    private const long DefaultSharedRoleId = 3;
 
     private enum PeriodMode
     {
@@ -160,7 +224,13 @@
         Day
     }
 
-    private sealed record BillDayGroup(DateOnly Date, List<Bill> Items);
+    private enum SummaryPage
+    {
+        Expense,
+        Income
+    }
+
+    private sealed record BillDayGroup(DateOnly Date, List<Bill> Items, decimal Expense, decimal Income);
 
     private sealed class BillSummary
     {
@@ -183,19 +253,46 @@
     }
 
     private PeriodMode CurrentMode = PeriodMode.Month;
+    private SummaryPage CurrentSummaryPage = SummaryPage.Expense;
+
     private DateOnly FocusedDate = DateOnly.FromDateTime(DateTime.Today);
 
     private bool IsLoading = true;
     private bool ShowPicker = false;
     private bool IgnoreNextClick = false;
+    private bool IsSummaryCollapsed = false;
 
     private string MonthPickerValue = "";
     private string DayPickerValue = "";
 
     private CancellationTokenSource? LongPressCts;
 
+    private double SummaryPointerStartX;
+    private bool SummaryPointerDown;
+
     private List<Bill> BillItems = new();
     private BillSummary Summary = new();
+
+    private Dictionary<long, string> RoleNameMap = new()
+    {
+        { 1, "一一" },
+        { 2, "依依" },
+        { 3, "共同" },
+        { 4, "草菠" }
+    };
+
+    private Dictionary<long, string> UserNameMap = new()
+    {
+        { 1, "一一" },
+        { 2, "依依" }
+    };
+
+    private Dictionary<long, string> MainCategoryNameMap = new();
+    private Dictionary<long, string> SubCategoryNameMap = new();
+
+    private long YiyiRoleId = DefaultYiyiRoleId;
+    private long Yiyi2RoleId = DefaultYiyi2RoleId;
+    private long SharedRoleId = DefaultSharedRoleId;
 
     private string CurrentDisplayTitle =>
         CurrentMode == PeriodMode.Month
@@ -206,16 +303,92 @@
         BillItems
             .OrderByDescending(x => x.BillDate)
             .ThenByDescending(x => x.Id)
-            .GroupBy(x => x.BillDate.HasValue
-                ? DateOnly.FromDateTime(x.BillDate.Value)
-                : FocusedDate)
-            .Select(g => new BillDayGroup(g.Key, g.ToList()))
+            .GroupBy(x => GetBillDate(x))
+            .Select(g => new BillDayGroup(
+                g.Key,
+                g.ToList(),
+                g.Where(x => x.IoType == 1).Sum(x => x.Amount),
+                g.Where(x => x.IoType == 2).Sum(x => x.Amount)))
             .ToList();
 
     protected override async Task OnInitializedAsync()
     {
         SyncPickerValue();
+        await LoadReferenceDataAsync();
         await LoadBillsAsync();
+    }
+
+    private async Task LoadReferenceDataAsync()
+    {
+        try
+        {
+            var roles = await Supabase.GetRolesAsync();
+            if (roles.Count > 0)
+            {
+                RoleNameMap = roles
+                    .Where(x => !x.IsDeleted && !string.IsNullOrWhiteSpace(x.Name))
+                    .GroupBy(x => x.Id)
+                    .ToDictionary(g => g.Key, g => g.First().Name!);
+
+                YiyiRoleId = FindRoleIdByName(NameYiyi, DefaultYiyiRoleId);
+                Yiyi2RoleId = FindRoleIdByName(NameYiyi2, DefaultYiyi2RoleId);
+                SharedRoleId = FindRoleIdByName(NameShared, DefaultSharedRoleId);
+            }
+        }
+        catch
+        {
+        }
+
+        try
+        {
+            var users = await Supabase.GetUsersAsync();
+            if (users.Count > 0)
+            {
+                UserNameMap = users
+                    .Where(x => !x.IsDeleted && !string.IsNullOrWhiteSpace(x.Name))
+                    .GroupBy(x => x.Id)
+                    .ToDictionary(g => g.Key, g => g.First().Name!);
+            }
+        }
+        catch
+        {
+        }
+
+        try
+        {
+            var mainCategories = await Supabase.GetMainCategoriesAsync();
+            if (mainCategories.Count > 0)
+            {
+                MainCategoryNameMap = mainCategories
+                    .Where(x => !x.IsDeleted && !string.IsNullOrWhiteSpace(x.Name))
+                    .GroupBy(x => x.Id)
+                    .ToDictionary(g => g.Key, g => g.First().Name!);
+            }
+        }
+        catch
+        {
+        }
+
+        try
+        {
+            var subCategories = await Supabase.GetSubCategoriesAsync();
+            if (subCategories.Count > 0)
+            {
+                SubCategoryNameMap = subCategories
+                    .Where(x => !x.IsDeleted && !string.IsNullOrWhiteSpace(x.Name))
+                    .GroupBy(x => x.Id)
+                    .ToDictionary(g => g.Key, g => g.First().Name!);
+            }
+        }
+        catch
+        {
+        }
+    }
+
+    private long FindRoleIdByName(string name, long fallbackId)
+    {
+        var found = RoleNameMap.FirstOrDefault(x => x.Value == name);
+        return found.Key > 0 ? found.Key : fallbackId;
     }
 
     private async Task LoadBillsAsync()
@@ -254,22 +427,30 @@
         var expenses = source.Where(x => x.IoType == 1).ToList();
         var incomes = source.Where(x => x.IoType == 2).ToList();
 
-        result.ExpenseYiyiPersonal = expenses.Where(x => x.PayerRoleId == RoleYiyi).Sum(x => x.Amount);
-        result.ExpenseYiyi2Personal = expenses.Where(x => x.PayerRoleId == RoleYiyi2).Sum(x => x.Amount);
-        result.SharedExpense = expenses.Where(x => x.PayerRoleId == RoleShared).Sum(x => x.Amount);
+        result.ExpenseYiyiPersonal = expenses.Where(x => x.PayerRoleId == YiyiRoleId).Sum(x => x.Amount);
+        result.ExpenseYiyi2Personal = expenses.Where(x => x.PayerRoleId == Yiyi2RoleId).Sum(x => x.Amount);
+        result.SharedExpense = expenses.Where(x => x.PayerRoleId == SharedRoleId).Sum(x => x.Amount);
 
-        result.IncomeYiyiPersonal = incomes.Where(x => ResolveIncomeRole(x) == RoleYiyi).Sum(x => x.Amount);
-        result.IncomeYiyi2Personal = incomes.Where(x => ResolveIncomeRole(x) == RoleYiyi2).Sum(x => x.Amount);
-        result.SharedIncome = incomes.Where(x => ResolveIncomeRole(x) == RoleShared).Sum(x => x.Amount);
+        result.IncomeYiyiPersonal = incomes.Where(x => x.PayerRoleId == YiyiRoleId).Sum(x => x.Amount);
+        result.IncomeYiyi2Personal = incomes.Where(x => x.PayerRoleId == Yiyi2RoleId).Sum(x => x.Amount);
+        result.SharedIncome = incomes.Where(x => x.PayerRoleId == SharedRoleId).Sum(x => x.Amount);
 
         return result;
     }
 
-    private long? ResolveIncomeRole(Bill bill) => bill.OwnerRoleId ?? bill.PayerRoleId;
+    private DateOnly GetBillDate(Bill bill)
+    {
+        return bill.BillDate.HasValue
+            ? DateOnly.FromDateTime(bill.BillDate.Value)
+            : FocusedDate;
+    }
 
     private async Task GoPrevious()
     {
-        FocusedDate = CurrentMode == PeriodMode.Month ? FocusedDate.AddMonths(-1) : FocusedDate.AddDays(-1);
+        FocusedDate = CurrentMode == PeriodMode.Month
+            ? FocusedDate.AddMonths(-1)
+            : FocusedDate.AddDays(-1);
+
         SyncPickerValue();
         ShowPicker = false;
         await LoadBillsAsync();
@@ -277,7 +458,10 @@
 
     private async Task GoNext()
     {
-        FocusedDate = CurrentMode == PeriodMode.Month ? FocusedDate.AddMonths(1) : FocusedDate.AddDays(1);
+        FocusedDate = CurrentMode == PeriodMode.Month
+            ? FocusedDate.AddMonths(1)
+            : FocusedDate.AddDays(1);
+
         SyncPickerValue();
         ShowPicker = false;
         await LoadBillsAsync();
@@ -309,6 +493,7 @@
     }
 
     private void HandleDatePointerUp() => LongPressCts?.Cancel();
+
     private void HandleDatePointerLeave() => LongPressCts?.Cancel();
 
     private void HandleDateAreaClick()
@@ -367,27 +552,107 @@
         SyncPickerValue();
     }
 
+    private void ToggleSummaryCollapsed()
+    {
+        IsSummaryCollapsed = !IsSummaryCollapsed;
+    }
+
+    private void SetSummaryPage(SummaryPage page)
+    {
+        CurrentSummaryPage = page;
+    }
+
+    private void HandleSummaryPointerDown(Microsoft.AspNetCore.Components.Web.PointerEventArgs e)
+    {
+        SummaryPointerDown = true;
+        SummaryPointerStartX = e.ClientX;
+    }
+
+    private void HandleSummaryPointerLeave()
+    {
+        SummaryPointerDown = false;
+    }
+
+    private void HandleSummaryPointerUp(Microsoft.AspNetCore.Components.Web.PointerEventArgs e)
+    {
+        if (!SummaryPointerDown) return;
+
+        var delta = e.ClientX - SummaryPointerStartX;
+        SummaryPointerDown = false;
+
+        if (Math.Abs(delta) < 35) return;
+
+        if (delta < 0)
+        {
+            CurrentSummaryPage = SummaryPage.Income;
+        }
+        else
+        {
+            CurrentSummaryPage = SummaryPage.Expense;
+        }
+    }
+
     private string Fmt(decimal value) => value.ToString("0.##");
 
-    private string GetTitle(Bill bill) => string.IsNullOrWhiteSpace(bill.Title) ? "未命名账单" : bill.Title!;
+    private string GetTitle(Bill bill) =>
+        string.IsNullOrWhiteSpace(bill.Title) ? "未命名账单" : bill.Title!;
 
-    private string GetIoText(short ioType) => ioType == 1 ? "支出" : "收入";
-
-    private string GetRoleNameForPayer(long? roleId) => roleId switch
+    private string GetRoleName(long roleId)
     {
-        RoleYiyi => "依依",
-        RoleYiyi2 => "一一",
-        RoleShared => "共同",
-        _ => "未知"
-    };
+        return RoleNameMap.TryGetValue(roleId, out var name) ? name : "-";
+    }
 
-    private string GetRoleNameForOwner(long? roleId) => roleId switch
+    private string GetUserName(long userId)
     {
-        RoleYiyi => "依依",
-        RoleYiyi2 => "一一",
-        RoleShared => "共同",
-        _ => "未指定"
-    };
+        if (userId == 0) return "-";
+        return UserNameMap.TryGetValue(userId, out var name) ? name : "-";
+    }
+
+    private string GetMainCategoryName(long categoryId)
+    {
+        return MainCategoryNameMap.TryGetValue(categoryId, out var name) ? name : "未分类";
+    }
+
+    private bool HasSubCategoryName(long categoryId)
+    {
+        return SubCategoryNameMap.ContainsKey(categoryId);
+    }
+
+    private string GetSubCategoryName(long categoryId)
+    {
+        return SubCategoryNameMap.TryGetValue(categoryId, out var name) ? name : "";
+    }
+
+    private string GetDayBarClass(DateOnly date)
+    {
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        if (date == today) return "today";
+
+        var day = date.DayOfWeek;
+        if (day == DayOfWeek.Saturday || day == DayOfWeek.Sunday) return "weekend";
+
+        return "";
+    }
+
+    private string GetDayTitle(DateOnly date)
+    {
+        return $"{date.Year}年{date.Month:D2}月{date.Day:D2}日";
+    }
+
+    private string GetWeekText(DateOnly date)
+    {
+        return date.DayOfWeek switch
+        {
+            DayOfWeek.Monday => "周一",
+            DayOfWeek.Tuesday => "周二",
+            DayOfWeek.Wednesday => "周三",
+            DayOfWeek.Thursday => "周四",
+            DayOfWeek.Friday => "周五",
+            DayOfWeek.Saturday => "周六",
+            DayOfWeek.Sunday => "周日",
+            _ => ""
+        };
+    }
 
     public void Dispose()
     {
