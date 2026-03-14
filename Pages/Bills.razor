@@ -1,8 +1,9 @@
-﻿@page "/"
+@page "/"
 @page "/bills"
 @using BookkeepingBlazor.Models
 @using BookkeepingBlazor.Services
 @inject SupabaseService Supabase
+@inject IJSRuntime JS
 @implements IDisposable
 
 <div class="bill-app">
@@ -145,17 +146,40 @@
             <div class="r3-count">@BillItems.Count 条</div>
         </div>
 
-        @if (IsLoading)
-        {
-            <div class="empty-box">加载中...</div>
-        }
-        else if (BillItems.Count == 0)
-        {
-            <div class="empty-box">当前时间范围没有账单</div>
-        }
-        else
-        {
-            <div class="records-scroll">
+        <div class="records-scroll"
+             @ref="RecordsScrollRef"
+             @onpointerdown="HandleListPointerDown"
+             @onpointermove="HandleListPointerMove"
+             @onpointerup="HandleListPointerUp"
+             @onpointerleave="HandleListPointerLeave">
+
+            <div class="pull-holder" style="height:@($"{Math.Max(PullDistance, IsRefreshingList ? 46 : 0)}px")">
+                <div class="pull-text">
+                    @if (IsRefreshingList)
+                    {
+                        <span>刷新中...</span>
+                    }
+                    else if (PullDistance > 56)
+                    {
+                        <span>松开刷新</span>
+                    }
+                    else if (PullDistance > 0)
+                    {
+                        <span>下拉刷新</span>
+                    }
+                </div>
+            </div>
+
+            @if (IsLoading)
+            {
+                <div class="empty-box">加载中...</div>
+            }
+            else if (BillItems.Count == 0)
+            {
+                <div class="empty-box">当前时间范围没有账单</div>
+            }
+            else
+            {
                 @foreach (var group in GroupedBills)
                 {
                     <section class="day-group">
@@ -173,40 +197,132 @@
 
                         @foreach (var bill in group.Items)
                         {
-                            <article class="bill-row">
-                                <div class="bill-main-top">
-                                    <div class="bill-title">@GetTitle(bill)</div>
-
-                                    <div class="bill-category-line">
-                                        <span class="category-chip main">@GetMainCategoryName(bill.MainCategoryId)</span>
-                                        @if (bill.SubCategoryId.HasValue && bill.SubCategoryId.Value > 0 && HasSubCategoryName(bill.SubCategoryId.Value))
-                                        {
-                                            <span class="category-chip sub">@GetSubCategoryName(bill.SubCategoryId.Value)</span>
-                                        }
-                                    </div>
+                            <div class="swipe-shell @(bill.MarkedPayerRoleId > 0 ? "marked" : "") @(bill.IsExtra ? "extra" : "")">
+                                <div class="side-panel left-panel">
+                                    @if (bill.MarkedPayerRoleId > 0)
+                                    {
+                                        <button class="action-btn mark-cancel"
+                                                @onclick:stopPropagation="true"
+                                                @onpointerdown:stopPropagation="true"
+                                                @onpointerup:stopPropagation="true"
+                                                @onclick="@(() => CancelMarkAsync(bill.Id))">
+                                            取消标记
+                                        </button>
+                                    }
+                                    else
+                                    {
+                                        <button class="action-btn mark"
+                                                @onclick:stopPropagation="true"
+                                                @onpointerdown:stopPropagation="true"
+                                                @onpointerup:stopPropagation="true"
+                                                @onclick="@(() => OpenMarkSheet(bill))">
+                                            标记
+                                        </button>
+                                    }
                                 </div>
 
-                                <div class="bill-amount @(bill.IoType == 1 ? "expense" : "income")">
-                                    @(bill.IoType == 1 ? "-" : "+")@Fmt(bill.Amount)
-                                </div>
+                                <article class="bill-row"
+                                         style="@GetRowTransformStyle(bill.Id)"
+                                         @onpointerdown:stopPropagation="true"
+                                         @onpointermove:stopPropagation="true"
+                                         @onpointerup:stopPropagation="true"
+                                         @onpointerleave:stopPropagation="true"
+                                         @onpointerdown="e => HandleRowPointerDown(bill.Id, e)"
+                                         @onpointermove="e => HandleRowPointerMove(bill.Id, e)"
+                                         @onpointerup="e => HandleRowPointerUp(bill.Id, e)"
+                                         @onpointerleave="e => HandleRowPointerLeave(bill.Id, e)">
+                                    <div class="bill-main-top">
+                                        <div class="bill-title">@GetTitle(bill)</div>
 
-                                <div class="bill-meta-row">
-                                    <div class="meta-left">
-                                        <span>所属：@GetRoleName(bill.OwnerRoleId)</span>
-                                        <span>付款：@GetRoleName(bill.PayerRoleId)</span>
+                                        <div class="bill-category-line">
+                                            <span class="category-chip main">@GetMainCategoryName(bill.MainCategoryId)</span>
+                                            @if (bill.SubCategoryId.HasValue && bill.SubCategoryId.Value > 0 && HasSubCategoryName(bill.SubCategoryId.Value))
+                                            {
+                                                <span class="category-chip sub">@GetSubCategoryName(bill.SubCategoryId.Value)</span>
+                                            }
+                                            @if (bill.MarkedPayerRoleId > 0)
+                                            {
+                                                <span class="category-chip mark-chip">标记：@GetRoleName(bill.MarkedPayerRoleId)</span>
+                                            }
+                                            @if (bill.IsExtra)
+                                            {
+                                                <span class="category-chip extra-chip">额外</span>
+                                            }
+                                        </div>
                                     </div>
-                                    <div class="meta-right">
-                                        <span>记录：@GetUserName(bill.CreatedBy)</span>
-                                        <span>更新：@GetUserName(bill.UpdatedBy)</span>
+
+                                    <div class="bill-amount @(bill.IoType == 1 ? "expense" : "income")">
+                                        @(bill.IoType == 1 ? "-" : "+")@Fmt(bill.Amount)
                                     </div>
+
+                                    <div class="bill-meta-row">
+                                        <div class="meta-left">
+                                            <span>所属：@GetRoleName(bill.OwnerRoleId)</span>
+                                            <span>付款：@GetRoleName(bill.PayerRoleId)</span>
+                                        </div>
+                                        <div class="meta-right">
+                                            <span>记录：@GetUserName(bill.CreatedBy)</span>
+                                            <span>更新：@GetUserName(bill.UpdatedBy)</span>
+                                        </div>
+                                    </div>
+                                </article>
+
+                                <div class="side-panel right-panel">
+                                    <button class="action-btn edit"
+                                            @onclick:stopPropagation="true"
+                                            @onpointerdown:stopPropagation="true"
+                                            @onpointerup:stopPropagation="true"
+                                            @onclick='async () => await ShowToastAsync("编辑画面下一步接")'>
+                                        编辑
+                                    </button>
+                                    <button class="action-btn delete"
+                                            @onclick:stopPropagation="true"
+                                            @onpointerdown:stopPropagation="true"
+                                            @onpointerup:stopPropagation="true"
+                                            @onclick="@(() => DeleteBillAsync(bill.Id))">
+                                        删除
+                                    </button>
                                 </div>
-                            </article>
+                            </div>
                         }
                     </section>
                 }
-            </div>
-        }
+            }
+        </div>
     </section>
+
+    <footer class="bottom-action-bar">
+        <button class="bar-btn" @onclick='async () => await ShowToastAsync("统计画面后续接")'>统计</button>
+        <button class="bar-btn" @onclick="RefreshBillsAsync">刷新</button>
+        <button class="add-btn" @onclick='async () => await ShowToastAsync("新增画面下一步接")' aria-label="添加">＋</button>
+        <button class="bar-btn" @onclick='async () => await ShowToastAsync("筛选功能后续接")'>筛选</button>
+        <button class="bar-btn" @onclick='async () => await ShowToastAsync("更多功能后续接")'>更多</button>
+    </footer>
+
+    @if (ShowMarkRoleSheet && MarkSheetBill is not null)
+    {
+        <div class="sheet-mask" @onclick="CloseMarkSheet"></div>
+        <div class="mark-sheet">
+            <div class="sheet-title">标记实际支付对象</div>
+            <div class="sheet-subtitle">当前付款：@GetRoleName(MarkSheetBill.PayerRoleId)</div>
+
+            <div class="sheet-role-list">
+                @foreach (var role in GetMarkCandidates(MarkSheetBill))
+                {
+                    <button class="sheet-role-btn" @onclick="@(() => MarkToRoleAsync(MarkSheetBill.Id, role.Id))">
+                        @role.Name
+                    </button>
+                }
+            </div>
+
+            <button class="sheet-cancel-btn" @onclick="CloseMarkSheet">取消</button>
+        </div>
+    }
+
+    @if (ShowToast)
+    {
+        <div class="toast-box">@ToastMessage</div>
+    }
 </div>
 
 @code {
@@ -218,17 +334,13 @@
     private const long DefaultYiyi2RoleId = 1;
     private const long DefaultSharedRoleId = 3;
 
-    private enum PeriodMode
-    {
-        Month,
-        Day
-    }
+    private const double LeftRevealWidth = 120;   // 手指左滑，露出右侧 编辑/删除
+    private const double RightRevealWidth = 60;   // 手指右滑，露出左侧 标记
+    private const double SwipeOpenThreshold = 34;
 
-    private enum SummaryPage
-    {
-        Expense,
-        Income
-    }
+    private enum PeriodMode { Month, Day }
+    private enum SummaryPage { Expense, Income }
+    private enum SwipeSide { None, Left, Right }
 
     private sealed record BillDayGroup(DateOnly Date, List<Bill> Items, decimal Expense, decimal Income);
 
@@ -240,56 +352,53 @@
         public decimal SharedExpenseHalf => SharedExpense / 2m;
         public decimal YiyiExpenseTotal => ExpenseYiyiPersonal + SharedExpenseHalf;
         public decimal Yiyi2ExpenseTotal => ExpenseYiyi2Personal + SharedExpenseHalf;
-
         public decimal IncomeYiyiPersonal { get; set; }
         public decimal IncomeYiyi2Personal { get; set; }
         public decimal SharedIncome { get; set; }
         public decimal SharedIncomeHalf => SharedIncome / 2m;
         public decimal YiyiIncomeTotal => IncomeYiyiPersonal + SharedIncomeHalf;
         public decimal Yiyi2IncomeTotal => IncomeYiyi2Personal + SharedIncomeHalf;
-
         public decimal YiyiBalance => YiyiIncomeTotal - YiyiExpenseTotal;
         public decimal Yiyi2Balance => Yiyi2IncomeTotal - Yiyi2ExpenseTotal;
     }
 
     private PeriodMode CurrentMode = PeriodMode.Month;
     private SummaryPage CurrentSummaryPage = SummaryPage.Expense;
-
     private DateOnly FocusedDate = DateOnly.FromDateTime(DateTime.Today);
-
     private bool IsLoading = true;
     private bool ShowPicker = false;
     private bool IgnoreNextClick = false;
     private bool IsSummaryCollapsed = false;
-
     private string MonthPickerValue = "";
     private string DayPickerValue = "";
-
     private CancellationTokenSource? LongPressCts;
-
+    private CancellationTokenSource? ToastCts;
     private double SummaryPointerStartX;
     private bool SummaryPointerDown;
-
+    private ElementReference RecordsScrollRef;
+    private bool ListPullTracking;
+    private double PullStartY;
+    private double PullDistance;
+    private bool IsRefreshingList;
+    private long? DragBillId;
+    private double DragStartX;
+    private double DragStartY;
+    private double DragCurrentOffset;
+    private double DragBaseOffset;
+    private bool DragIsHorizontal;
+    private long? OpenBillId;
+    private SwipeSide OpenSwipeSide = SwipeSide.None;
+    private bool ShowMarkRoleSheet;
+    private Bill? MarkSheetBill;
+    private bool ShowToast;
+    private string ToastMessage = "";
     private List<Bill> BillItems = new();
     private BillSummary Summary = new();
-
-    private Dictionary<long, string> RoleNameMap = new()
-    {
-        { 1, "一一" },
-        { 2, "依依" },
-        { 3, "共同" },
-        { 4, "草菠" }
-    };
-
-    private Dictionary<long, string> UserNameMap = new()
-    {
-        { 1, "一一" },
-        { 2, "依依" }
-    };
-
+    private List<RoleInfo> RoleItems = new();
+    private Dictionary<long, string> RoleNameMap = new() { { 1, "一一" }, { 2, "依依" }, { 3, "共同" }, { 4, "草菠" } };
+    private Dictionary<long, string> UserNameMap = new() { { 1, "一一" }, { 2, "依依" } };
     private Dictionary<long, string> MainCategoryNameMap = new();
     private Dictionary<long, string> SubCategoryNameMap = new();
-
     private long YiyiRoleId = DefaultYiyiRoleId;
     private long Yiyi2RoleId = DefaultYiyi2RoleId;
     private long SharedRoleId = DefaultSharedRoleId;
@@ -300,16 +409,10 @@
             : $"{FocusedDate.Year}年{FocusedDate.Month:D2}月{FocusedDate.Day:D2}日";
 
     private List<BillDayGroup> GroupedBills =>
-        BillItems
-            .OrderByDescending(x => x.BillDate)
-            .ThenByDescending(x => x.Id)
-            .GroupBy(x => GetBillDate(x))
-            .Select(g => new BillDayGroup(
-                g.Key,
-                g.ToList(),
-                g.Where(x => x.IoType == 1).Sum(x => x.Amount),
-                g.Where(x => x.IoType == 2).Sum(x => x.Amount)))
-            .ToList();
+        BillItems.OrderByDescending(x => x.BillDate).ThenByDescending(x => x.Id)
+        .GroupBy(x => GetBillDate(x))
+        .Select(g => new BillDayGroup(g.Key, g.ToList(), g.Where(x => x.IoType == 1).Sum(x => x.Amount), g.Where(x => x.IoType == 2).Sum(x => x.Amount)))
+        .ToList();
 
     protected override async Task OnInitializedAsync()
     {
@@ -325,64 +428,44 @@
             var roles = await Supabase.GetRolesAsync();
             if (roles.Count > 0)
             {
-                RoleNameMap = roles
-                    .Where(x => !x.IsDeleted && !string.IsNullOrWhiteSpace(x.Name))
-                    .GroupBy(x => x.Id)
-                    .ToDictionary(g => g.Key, g => g.First().Name!);
-
+                RoleItems = roles.Where(x => !x.IsDeleted).ToList();
+                RoleNameMap = RoleItems.Where(x => !string.IsNullOrWhiteSpace(x.Name)).GroupBy(x => x.Id).ToDictionary(g => g.Key, g => g.First().Name!);
                 YiyiRoleId = FindRoleIdByName(NameYiyi, DefaultYiyiRoleId);
                 Yiyi2RoleId = FindRoleIdByName(NameYiyi2, DefaultYiyi2RoleId);
                 SharedRoleId = FindRoleIdByName(NameShared, DefaultSharedRoleId);
             }
         }
-        catch
-        {
-        }
+        catch { }
 
         try
         {
             var users = await Supabase.GetUsersAsync();
             if (users.Count > 0)
             {
-                UserNameMap = users
-                    .Where(x => !x.IsDeleted && !string.IsNullOrWhiteSpace(x.Name))
-                    .GroupBy(x => x.Id)
-                    .ToDictionary(g => g.Key, g => g.First().Name!);
+                UserNameMap = users.Where(x => !x.IsDeleted && !string.IsNullOrWhiteSpace(x.Name)).GroupBy(x => x.Id).ToDictionary(g => g.Key, g => g.First().Name!);
             }
         }
-        catch
-        {
-        }
+        catch { }
 
         try
         {
             var mainCategories = await Supabase.GetMainCategoriesAsync();
             if (mainCategories.Count > 0)
             {
-                MainCategoryNameMap = mainCategories
-                    .Where(x => !x.IsDeleted && !string.IsNullOrWhiteSpace(x.Name))
-                    .GroupBy(x => x.Id)
-                    .ToDictionary(g => g.Key, g => g.First().Name!);
+                MainCategoryNameMap = mainCategories.Where(x => !string.IsNullOrWhiteSpace(x.Name)).GroupBy(x => x.Id).ToDictionary(g => g.Key, g => g.First().Name!);
             }
         }
-        catch
-        {
-        }
+        catch { }
 
         try
         {
             var subCategories = await Supabase.GetSubCategoriesAsync();
             if (subCategories.Count > 0)
             {
-                SubCategoryNameMap = subCategories
-                    .Where(x => !x.IsDeleted && !string.IsNullOrWhiteSpace(x.Name))
-                    .GroupBy(x => x.Id)
-                    .ToDictionary(g => g.Key, g => g.First().Name!);
+                SubCategoryNameMap = subCategories.Where(x => !string.IsNullOrWhiteSpace(x.Name)).GroupBy(x => x.Id).ToDictionary(g => g.Key, g => g.First().Name!);
             }
         }
-        catch
-        {
-        }
+        catch { }
     }
 
     private long FindRoleIdByName(string name, long fallbackId)
@@ -401,12 +484,19 @@
             var (start, endExclusive) = GetRange();
             BillItems = await Supabase.GetBillsByRangeAsync(start, endExclusive);
             Summary = BuildSummary(BillItems);
+            CloseSwipeImmediate();
         }
         finally
         {
             IsLoading = false;
             StateHasChanged();
         }
+    }
+
+    private async Task RefreshBillsAsync()
+    {
+        await LoadBillsAsync();
+        await ShowToastAsync("账单已刷新");
     }
 
     private (DateOnly Start, DateOnly EndExclusive) GetRange()
@@ -416,21 +506,18 @@
             var start = new DateOnly(FocusedDate.Year, FocusedDate.Month, 1);
             return (start, start.AddMonths(1));
         }
-
         return (FocusedDate, FocusedDate.AddDays(1));
     }
 
     private BillSummary BuildSummary(List<Bill> source)
     {
         var result = new BillSummary();
-
         var expenses = source.Where(x => x.IoType == 1).ToList();
         var incomes = source.Where(x => x.IoType == 2).ToList();
 
         result.ExpenseYiyiPersonal = expenses.Where(x => x.PayerRoleId == YiyiRoleId).Sum(x => x.Amount);
         result.ExpenseYiyi2Personal = expenses.Where(x => x.PayerRoleId == Yiyi2RoleId).Sum(x => x.Amount);
         result.SharedExpense = expenses.Where(x => x.PayerRoleId == SharedRoleId).Sum(x => x.Amount);
-
         result.IncomeYiyiPersonal = incomes.Where(x => x.PayerRoleId == YiyiRoleId).Sum(x => x.Amount);
         result.IncomeYiyi2Personal = incomes.Where(x => x.PayerRoleId == Yiyi2RoleId).Sum(x => x.Amount);
         result.SharedIncome = incomes.Where(x => x.PayerRoleId == SharedRoleId).Sum(x => x.Amount);
@@ -438,19 +525,12 @@
         return result;
     }
 
-    private DateOnly GetBillDate(Bill bill)
-    {
-        return bill.BillDate.HasValue
-            ? DateOnly.FromDateTime(bill.BillDate.Value)
-            : FocusedDate;
-    }
+    private DateOnly GetBillDate(Bill bill) =>
+        bill.BillDate.HasValue ? DateOnly.FromDateTime(bill.BillDate.Value) : FocusedDate;
 
     private async Task GoPrevious()
     {
-        FocusedDate = CurrentMode == PeriodMode.Month
-            ? FocusedDate.AddMonths(-1)
-            : FocusedDate.AddDays(-1);
-
+        FocusedDate = CurrentMode == PeriodMode.Month ? FocusedDate.AddMonths(-1) : FocusedDate.AddDays(-1);
         SyncPickerValue();
         ShowPicker = false;
         await LoadBillsAsync();
@@ -458,10 +538,7 @@
 
     private async Task GoNext()
     {
-        FocusedDate = CurrentMode == PeriodMode.Month
-            ? FocusedDate.AddMonths(1)
-            : FocusedDate.AddDays(1);
-
+        FocusedDate = CurrentMode == PeriodMode.Month ? FocusedDate.AddMonths(1) : FocusedDate.AddDays(1);
         SyncPickerValue();
         ShowPicker = false;
         await LoadBillsAsync();
@@ -477,7 +554,6 @@
     {
         LongPressCts?.Cancel();
         LongPressCts = new CancellationTokenSource();
-
         try
         {
             await Task.Delay(550, LongPressCts.Token);
@@ -487,13 +563,10 @@
             SyncPickerValue();
             StateHasChanged();
         }
-        catch (TaskCanceledException)
-        {
-        }
+        catch (TaskCanceledException) { }
     }
 
     private void HandleDatePointerUp() => LongPressCts?.Cancel();
-
     private void HandleDatePointerLeave() => LongPressCts?.Cancel();
 
     private void HandleDateAreaClick()
@@ -503,20 +576,12 @@
             IgnoreNextClick = false;
             return;
         }
-
         ShowPicker = !ShowPicker;
         SyncPickerValue();
     }
 
-    private void OnMonthPickerChanged(ChangeEventArgs e)
-    {
-        MonthPickerValue = e.Value?.ToString() ?? "";
-    }
-
-    private void OnDayPickerChanged(ChangeEventArgs e)
-    {
-        DayPickerValue = e.Value?.ToString() ?? "";
-    }
+    private void OnMonthPickerChanged(ChangeEventArgs e) => MonthPickerValue = e.Value?.ToString() ?? "";
+    private void OnDayPickerChanged(ChangeEventArgs e) => DayPickerValue = e.Value?.ToString() ?? "";
 
     private async Task ConfirmPickerAsync()
     {
@@ -525,21 +590,16 @@
             if (!string.IsNullOrWhiteSpace(MonthPickerValue))
             {
                 var parts = MonthPickerValue.Split('-');
-                if (parts.Length == 2 &&
-                    int.TryParse(parts[0], out var year) &&
-                    int.TryParse(parts[1], out var month))
+                if (parts.Length == 2 && int.TryParse(parts[0], out var year) && int.TryParse(parts[1], out var month))
                 {
                     var day = Math.Min(FocusedDate.Day, DateTime.DaysInMonth(year, month));
                     FocusedDate = new DateOnly(year, month, day);
                 }
             }
         }
-        else
+        else if (DateOnly.TryParse(DayPickerValue, out var selectedDate))
         {
-            if (DateOnly.TryParse(DayPickerValue, out var selectedDate))
-            {
-                FocusedDate = selectedDate;
-            }
+            FocusedDate = selectedDate;
         }
 
         ShowPicker = false;
@@ -552,15 +612,8 @@
         SyncPickerValue();
     }
 
-    private void ToggleSummaryCollapsed()
-    {
-        IsSummaryCollapsed = !IsSummaryCollapsed;
-    }
-
-    private void SetSummaryPage(SummaryPage page)
-    {
-        CurrentSummaryPage = page;
-    }
+    private void ToggleSummaryCollapsed() => IsSummaryCollapsed = !IsSummaryCollapsed;
+    private void SetSummaryPage(SummaryPage page) => CurrentSummaryPage = page;
 
     private void HandleSummaryPointerDown(Microsoft.AspNetCore.Components.Web.PointerEventArgs e)
     {
@@ -568,95 +621,299 @@
         SummaryPointerStartX = e.ClientX;
     }
 
-    private void HandleSummaryPointerLeave()
-    {
-        SummaryPointerDown = false;
-    }
+    private void HandleSummaryPointerLeave() => SummaryPointerDown = false;
 
     private void HandleSummaryPointerUp(Microsoft.AspNetCore.Components.Web.PointerEventArgs e)
     {
         if (!SummaryPointerDown) return;
-
         var delta = e.ClientX - SummaryPointerStartX;
         SummaryPointerDown = false;
-
         if (Math.Abs(delta) < 35) return;
+        CurrentSummaryPage = delta < 0 ? SummaryPage.Income : SummaryPage.Expense;
+    }
 
-        if (delta < 0)
+    private async Task HandleListPointerDown(Microsoft.AspNetCore.Components.Web.PointerEventArgs e)
+    {
+        if (ShowMarkRoleSheet) return;
+        var scrollTop = await JS.InvokeAsync<double>("bookkeeping.getScrollTop", RecordsScrollRef);
+        if (scrollTop <= 1)
         {
-            CurrentSummaryPage = SummaryPage.Income;
+            ListPullTracking = true;
+            PullStartY = e.ClientY;
+            PullDistance = 0;
+        }
+    }
+
+    private void HandleListPointerMove(Microsoft.AspNetCore.Components.Web.PointerEventArgs e)
+    {
+        if (!ListPullTracking || IsRefreshingList) return;
+        var delta = e.ClientY - PullStartY;
+        PullDistance = delta > 0 ? Math.Min(delta * 0.6, 76) : 0;
+        StateHasChanged();
+    }
+
+    private async Task HandleListPointerUp(Microsoft.AspNetCore.Components.Web.PointerEventArgs e)
+    {
+        if (!ListPullTracking) return;
+        ListPullTracking = false;
+
+        if (PullDistance >= 56)
+        {
+            IsRefreshingList = true;
+            StateHasChanged();
+            await LoadBillsAsync();
+            await Task.Delay(280);
+            IsRefreshingList = false;
+        }
+
+        PullDistance = 0;
+        StateHasChanged();
+    }
+
+    private void HandleListPointerLeave(Microsoft.AspNetCore.Components.Web.PointerEventArgs e)
+    {
+        if (!ListPullTracking || IsRefreshingList) return;
+        ListPullTracking = false;
+        PullDistance = 0;
+        StateHasChanged();
+    }
+
+    private void HandleRowPointerDown(long billId, Microsoft.AspNetCore.Components.Web.PointerEventArgs e)
+    {
+        DragBillId = billId;
+        DragStartX = e.ClientX;
+        DragStartY = e.ClientY;
+        DragIsHorizontal = false;
+        DragBaseOffset = GetBillOffset(billId);
+        DragCurrentOffset = DragBaseOffset;
+
+        if (OpenBillId.HasValue && OpenBillId.Value != billId)
+        {
+            CloseSwipeImmediate();
+            DragBaseOffset = 0;
+        }
+    }
+
+    private void HandleRowPointerMove(long billId, Microsoft.AspNetCore.Components.Web.PointerEventArgs e)
+    {
+        if (DragBillId != billId) return;
+
+        var dx = e.ClientX - DragStartX;
+        var dy = e.ClientY - DragStartY;
+
+        if (!DragIsHorizontal)
+        {
+            if (Math.Abs(dy) > 6 && Math.Abs(dy) > Math.Abs(dx) * 1.2)
+            {
+                DragBillId = null;
+                DragCurrentOffset = 0;
+                DragBaseOffset = 0;
+                DragIsHorizontal = false;
+                return;
+            }
+
+            if (Math.Abs(dx) < 14 || Math.Abs(dx) < Math.Abs(dy) + 4)
+            {
+                return;
+            }
+
+            DragIsHorizontal = true;
+        }
+
+        DragCurrentOffset = Math.Clamp(DragBaseOffset + dx, -LeftRevealWidth, RightRevealWidth);
+        StateHasChanged();
+    }
+
+    private void HandleRowPointerUp(long billId, Microsoft.AspNetCore.Components.Web.PointerEventArgs e)
+    {
+        if (DragBillId != billId) return;
+
+        if (!DragIsHorizontal)
+        {
+            DragBillId = null;
+            DragCurrentOffset = 0;
+            DragBaseOffset = 0;
+            return;
+        }
+
+        var finalOffset = DragCurrentOffset;
+
+        if (finalOffset <= -SwipeOpenThreshold)
+        {
+            OpenBillId = billId;
+            OpenSwipeSide = SwipeSide.Left;
+        }
+        else if (finalOffset >= SwipeOpenThreshold)
+        {
+            OpenBillId = billId;
+            OpenSwipeSide = SwipeSide.Right;
         }
         else
         {
-            CurrentSummaryPage = SummaryPage.Expense;
+            CloseSwipeImmediate();
+        }
+
+        DragBillId = null;
+        DragCurrentOffset = 0;
+        DragBaseOffset = 0;
+        DragIsHorizontal = false;
+        StateHasChanged();
+    }
+
+    private void HandleRowPointerLeave(long billId, Microsoft.AspNetCore.Components.Web.PointerEventArgs e)
+    {
+        if (DragBillId == billId)
+        {
+            HandleRowPointerUp(billId, e);
         }
     }
 
+    private double GetBillOffset(long billId)
+    {
+        if (DragBillId == billId) return DragCurrentOffset;
+        if (OpenBillId == billId)
+        {
+            return OpenSwipeSide switch
+            {
+                SwipeSide.Left => -LeftRevealWidth,
+                SwipeSide.Right => RightRevealWidth,
+                _ => 0
+            };
+        }
+        return 0;
+    }
+
+    private string GetRowTransformStyle(long billId) => $"transform: translate3d({GetBillOffset(billId)}px,0,0);";
+
+    private void CloseSwipeImmediate()
+    {
+        OpenBillId = null;
+        OpenSwipeSide = SwipeSide.None;
+        DragBillId = null;
+        DragCurrentOffset = 0;
+        DragBaseOffset = 0;
+        DragIsHorizontal = false;
+    }
+
+    private void OpenMarkSheet(Bill bill)
+    {
+        MarkSheetBill = bill;
+        ShowMarkRoleSheet = true;
+        CloseSwipeImmediate();
+    }
+
+    private void CloseMarkSheet()
+    {
+        ShowMarkRoleSheet = false;
+        MarkSheetBill = null;
+    }
+
+    private IEnumerable<RoleInfo> GetMarkCandidates(Bill bill)
+    {
+        IEnumerable<RoleInfo> source;
+
+        if (RoleItems.Count > 0)
+        {
+            source = RoleItems;
+        }
+        else
+        {
+            source = RoleNameMap.Select(x => new RoleInfo
+            {
+                Id = x.Key,
+                Name = x.Value,
+                RoleType = x.Key == SharedRoleId ? "group" : "human",
+                IsDeleted = false
+            });
+        }
+
+        return source
+            .Where(x =>
+                !x.IsDeleted &&
+                !string.IsNullOrWhiteSpace(x.Name) &&
+                x.Id != bill.PayerRoleId)
+            .OrderBy(x => x.Id);
+    }
+
+    private async Task MarkToRoleAsync(long billId, long roleId)
+    {
+        await Supabase.MarkBillAsync(billId, roleId);
+        CloseMarkSheet();
+        await LoadBillsAsync();
+        await ShowToastAsync("已标记");
+    }
+
+    private async Task CancelMarkAsync(long billId)
+    {
+        await Supabase.ClearBillMarkAsync(billId);
+        CloseSwipeImmediate();
+        await LoadBillsAsync();
+        await ShowToastAsync("已取消标记");
+    }
+
+    private async Task DeleteBillAsync(long billId)
+    {
+        var ok = await JS.InvokeAsync<bool>("confirm", "确定删除这条账单吗？");
+        if (!ok) return;
+        await Supabase.SoftDeleteBillAsync(billId);
+        CloseSwipeImmediate();
+        await LoadBillsAsync();
+        await ShowToastAsync("已删除");
+    }
+
+    private async Task ShowToastAsync(string message)
+    {
+        ToastMessage = message;
+        ShowToast = true;
+        StateHasChanged();
+
+        ToastCts?.Cancel();
+        ToastCts = new CancellationTokenSource();
+
+        try
+        {
+            await Task.Delay(1800, ToastCts.Token);
+            ShowToast = false;
+            StateHasChanged();
+        }
+        catch (TaskCanceledException) { }
+    }
+
     private string Fmt(decimal value) => value.ToString("0.##");
-
-    private string GetTitle(Bill bill) =>
-        string.IsNullOrWhiteSpace(bill.Title) ? "未命名账单" : bill.Title!;
-
-    private string GetRoleName(long roleId)
-    {
-        return RoleNameMap.TryGetValue(roleId, out var name) ? name : "-";
-    }
-
-    private string GetUserName(long userId)
-    {
-        if (userId == 0) return "-";
-        return UserNameMap.TryGetValue(userId, out var name) ? name : "-";
-    }
-
-    private string GetMainCategoryName(long categoryId)
-    {
-        return MainCategoryNameMap.TryGetValue(categoryId, out var name) ? name : "未分类";
-    }
-
-    private bool HasSubCategoryName(long categoryId)
-    {
-        return SubCategoryNameMap.ContainsKey(categoryId);
-    }
-
-    private string GetSubCategoryName(long categoryId)
-    {
-        return SubCategoryNameMap.TryGetValue(categoryId, out var name) ? name : "";
-    }
+    private string GetTitle(Bill bill) => string.IsNullOrWhiteSpace(bill.Title) ? "未命名账单" : bill.Title!;
+    private string GetRoleName(long roleId) => RoleNameMap.TryGetValue(roleId, out var name) ? name : "-";
+    private string GetUserName(long userId) => userId == 0 ? "-" : (UserNameMap.TryGetValue(userId, out var name) ? name : "-");
+    private string GetMainCategoryName(long categoryId) => MainCategoryNameMap.TryGetValue(categoryId, out var name) ? name : "未分类";
+    private bool HasSubCategoryName(long categoryId) => SubCategoryNameMap.ContainsKey(categoryId);
+    private string GetSubCategoryName(long categoryId) => SubCategoryNameMap.TryGetValue(categoryId, out var name) ? name : "";
 
     private string GetDayBarClass(DateOnly date)
     {
         var today = DateOnly.FromDateTime(DateTime.Today);
         if (date == today) return "today";
-
         var day = date.DayOfWeek;
-        if (day == DayOfWeek.Saturday || day == DayOfWeek.Sunday) return "weekend";
-
-        return "";
+        return day is DayOfWeek.Saturday or DayOfWeek.Sunday ? "weekend" : "";
     }
 
-    private string GetDayTitle(DateOnly date)
+    private string GetDayTitle(DateOnly date) => $"{date.Year}年{date.Month:D2}月{date.Day:D2}日";
+
+    private string GetWeekText(DateOnly date) => date.DayOfWeek switch
     {
-        return $"{date.Year}年{date.Month:D2}月{date.Day:D2}日";
-    }
-
-    private string GetWeekText(DateOnly date)
-    {
-        return date.DayOfWeek switch
-        {
-            DayOfWeek.Monday => "周一",
-            DayOfWeek.Tuesday => "周二",
-            DayOfWeek.Wednesday => "周三",
-            DayOfWeek.Thursday => "周四",
-            DayOfWeek.Friday => "周五",
-            DayOfWeek.Saturday => "周六",
-            DayOfWeek.Sunday => "周日",
-            _ => ""
-        };
-    }
+        DayOfWeek.Monday => "周一",
+        DayOfWeek.Tuesday => "周二",
+        DayOfWeek.Wednesday => "周三",
+        DayOfWeek.Thursday => "周四",
+        DayOfWeek.Friday => "周五",
+        DayOfWeek.Saturday => "周六",
+        DayOfWeek.Sunday => "周日",
+        _ => ""
+    };
 
     public void Dispose()
     {
         LongPressCts?.Cancel();
         LongPressCts?.Dispose();
+        ToastCts?.Cancel();
+        ToastCts?.Dispose();
     }
 }

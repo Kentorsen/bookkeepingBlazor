@@ -1,4 +1,5 @@
 ﻿using System.Net.Http.Headers;
+using System.Text;
 using System.Text.Json;
 using BookkeepingBlazor.Models;
 
@@ -41,6 +42,21 @@ namespace BookkeepingBlazor.Services
             return JsonSerializer.Deserialize<List<T>>(json, options) ?? new List<T>();
         }
 
+        private async Task PatchAsync(string relativeUrl, object payload)
+        {
+            var json = JsonSerializer.Serialize(payload);
+            var request = new HttpRequestMessage(
+                HttpMethod.Patch,
+                $"{SupabaseUrl}/rest/v1/{relativeUrl}");
+
+            ApplyAuthHeaders(request);
+            request.Headers.Add("Prefer", "return=minimal");
+            request.Content = new StringContent(json, Encoding.UTF8, "application/json");
+
+            var response = await _http.SendAsync(request);
+            response.EnsureSuccessStatusCode();
+        }
+
         public Task<List<Bill>> GetBillsByRangeAsync(DateOnly startDate, DateOnly endExclusive)
         {
             var url =
@@ -69,13 +85,46 @@ namespace BookkeepingBlazor.Services
         public Task<List<MainCategoryInfo>> GetMainCategoriesAsync()
         {
             return GetListAsync<MainCategoryInfo>(
-                "main_categories?select=id,name,icon,is_deleted&order=id.asc");
+                "main_categories?select=*&order=id.asc");
         }
 
         public Task<List<SubCategoryInfo>> GetSubCategoriesAsync()
         {
             return GetListAsync<SubCategoryInfo>(
-                "sub_categories?select=id,main_category_id,name,icon,is_deleted&order=id.asc");
+                "sub_categories?select=*&order=id.asc");
+        }
+
+        public Task MarkBillAsync(long billId, long markedPayerRoleId)
+        {
+            return PatchAsync(
+                $"bills?id=eq.{billId}",
+                new
+                {
+                    marked_payer_role_id = markedPayerRoleId,
+                    updated_at = DateTime.UtcNow
+                });
+        }
+
+        public Task ClearBillMarkAsync(long billId)
+        {
+            return PatchAsync(
+                $"bills?id=eq.{billId}",
+                new
+                {
+                    marked_payer_role_id = 0,
+                    updated_at = DateTime.UtcNow
+                });
+        }
+
+        public Task SoftDeleteBillAsync(long billId)
+        {
+            return PatchAsync(
+                $"bills?id=eq.{billId}",
+                new
+                {
+                    is_deleted = true,
+                    updated_at = DateTime.UtcNow
+                });
         }
     }
 }
