@@ -1,3 +1,5 @@
+/* Bills.razor.css - 完整文件 */
+
 .bill-app {
     height: 100dvh;
     width: 100vw;
@@ -81,22 +83,27 @@
 }
 
 .picker-panel {
-    margin: 8px 8px 0;
+    margin: 6px 8px 0;
     background: #fff;
-    border-radius: 12px;
-    padding: 10px;
+    border-radius: 10px;
+    padding: 6px;
     box-shadow: 0 2px 10px rgba(0,0,0,.04);
+    overflow: hidden;
+    min-height: 50px;
+    font-size: 13px;
 }
 
 .picker-input {
     width: 100%;
-    height: 38px;
+    max-width: 100%;
+    height: 34px;
     border: 1px solid #e6eaf1;
-    border-radius: 10px;
-    padding: 0 10px;
+    border-radius: 8px;
+    padding: 0 8px;
     box-sizing: border-box;
     background: #fff;
-    font-size: 14px;
+    font-size: 13px;
+    min-width: 0;
 }
 
 .picker-actions {
@@ -107,10 +114,10 @@
 
 .picker-btn {
     flex: 1;
-    height: 36px;
-    border-radius: 10px;
+    height: 32px;
+    border-radius: 8px;
     border: none;
-    font-size: 14px;
+    font-size: 13px;
 }
 
     .picker-btn.light {
@@ -127,7 +134,7 @@
     flex: 0 0 auto;
     margin: 8px 8px 0;
     background: #fff;
-    border-radius: 18px;
+    border-radius: 14px;
     box-shadow: 0 2px 10px rgba(0,0,0,.04);
     overflow: hidden;
 }
@@ -159,7 +166,6 @@
         opacity: .85;
         z-index: 0;
     }
-
 
 .dot {
     width: 7px;
@@ -317,6 +323,7 @@
     -webkit-overflow-scrolling: touch;
     padding-bottom: 14px;
     touch-action: pan-y;
+    overscroll-behavior-y: contain;
 }
 
 .pull-holder {
@@ -390,10 +397,11 @@
 .swipe-shell {
     position: relative;
     margin-bottom: 6px;
-    border-radius: 22px;
+    border-radius: 14px;
     overflow: hidden;
     background: #ffffff;
     touch-action: pan-y;
+    contain: layout paint;
 }
 
     .swipe-shell.extra {
@@ -411,18 +419,24 @@
     bottom: 0;
     z-index: 1;
     overflow: hidden;
+    opacity: 0;
+    transition: opacity .08s linear;
+}
+
+.swipe-shell.revealed .side-panel {
+    opacity: 1;
 }
 
 .left-panel {
     left: 0;
     width: 60px;
-    border-radius: 22px 0 0 22px;
+    border-radius: 14px 0 0 14px;
 }
 
 .right-panel {
     right: 0;
     width: 120px;
-    border-radius: 0 22px 22px 0;
+    border-radius: 0 14px 14px 0;
     display: flex;
 }
 
@@ -440,10 +454,11 @@
 .left-panel .action-btn {
     width: 100%;
     height: 100%;
-    border-radius: 22px 0 0 22px;
+    border-radius: 14px 0 0 14px;
     white-space: normal;
     line-height: 1.15;
     padding: 0 4px;
+    background: #9bb0d1;
 }
 
 .right-panel .action-btn {
@@ -459,7 +474,7 @@
 .right-panel .delete {
     width: 60px;
     background: #ef9cb8;
-    border-radius: 0 22px 22px 0;
+    border-radius: 0 14px 14px 0;
 }
 
 .action-btn.mark {
@@ -476,7 +491,7 @@
     min-width: 100%;
     box-sizing: border-box;
     background: #fff;
-    border-radius: 22px;
+    border-radius: 14px;
     padding: 10px 12px;
     box-shadow: 0 1px 4px rgba(0,0,0,.03);
     display: grid;
@@ -489,6 +504,8 @@
     will-change: transform;
     z-index: 2;
     touch-action: pan-y;
+    transform: translateZ(0);
+    backface-visibility: hidden;
 }
 
 .swipe-shell.extra .bill-row {
@@ -567,7 +584,8 @@
     color: #8a93a7;
 }
 
-.meta-left, .meta-right {
+.meta-left,
+.meta-right {
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
@@ -581,7 +599,7 @@
 
 .empty-box {
     background: #fff;
-    border-radius: 18px;
+    border-radius: 14px;
     padding: 16px;
     text-align: center;
     color: #7f889c;
@@ -603,7 +621,7 @@
     padding: 0 10px;
     box-sizing: border-box;
     box-shadow: none;
-    border-top: none;
+    border-top: 1px solid #e8e8ee;
 }
 
 .bar-btn {

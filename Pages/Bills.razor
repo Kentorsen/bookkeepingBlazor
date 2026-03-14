@@ -54,11 +54,9 @@
         <div class="r2-head">
             <div class="r2-dots">
                 <button class="dot @(CurrentSummaryPage == SummaryPage.Expense ? "active" : "")"
-                        @onclick="@(() => SetSummaryPage(SummaryPage.Expense))"
-                        aria-label="支出页"></button>
+                        @onclick="@(() => SetSummaryPage(SummaryPage.Expense))"></button>
                 <button class="dot @(CurrentSummaryPage == SummaryPage.Income ? "active" : "")"
-                        @onclick="@(() => SetSummaryPage(SummaryPage.Income))"
-                        aria-label="收入页"></button>
+                        @onclick="@(() => SetSummaryPage(SummaryPage.Income))"></button>
             </div>
 
             <button class="collapse-btn" @onclick="ToggleSummaryCollapsed">
@@ -68,11 +66,7 @@
 
         @if (!IsSummaryCollapsed)
         {
-            <div class="r2-viewport"
-                 @onpointerdown="HandleSummaryPointerDown"
-                 @onpointerup="HandleSummaryPointerUp"
-                 @onpointerleave="HandleSummaryPointerLeave">
-
+            <div class="r2-viewport">
                 <div class="r2-slider @(CurrentSummaryPage == SummaryPage.Income ? "income-page" : "expense-page")">
                     <section class="r2-page">
                         <div class="r2-title">支出</div>
@@ -197,14 +191,12 @@
 
                         @foreach (var bill in group.Items)
                         {
-                            <div class="swipe-shell @(bill.MarkedPayerRoleId > 0 ? "marked" : "") @(bill.IsExtra ? "extra" : "")">
+                            <div class="swipe-shell @(bill.MarkedPayerRoleId > 0 ? "marked" : "") @(bill.IsExtra ? "extra" : "") @GetShellStateClass(bill.Id)">
                                 <div class="side-panel left-panel">
                                     @if (bill.MarkedPayerRoleId > 0)
                                     {
                                         <button class="action-btn mark-cancel"
                                                 @onclick:stopPropagation="true"
-                                                @onpointerdown:stopPropagation="true"
-                                                @onpointerup:stopPropagation="true"
                                                 @onclick="@(() => CancelMarkAsync(bill.Id))">
                                             取消标记
                                         </button>
@@ -213,8 +205,6 @@
                                     {
                                         <button class="action-btn mark"
                                                 @onclick:stopPropagation="true"
-                                                @onpointerdown:stopPropagation="true"
-                                                @onpointerup:stopPropagation="true"
                                                 @onclick="@(() => OpenMarkSheet(bill))">
                                             标记
                                         </button>
@@ -223,14 +213,7 @@
 
                                 <article class="bill-row"
                                          style="@GetRowTransformStyle(bill.Id)"
-                                         @onpointerdown:stopPropagation="true"
-                                         @onpointermove:stopPropagation="true"
-                                         @onpointerup:stopPropagation="true"
-                                         @onpointerleave:stopPropagation="true"
-                                         @onpointerdown="e => HandleRowPointerDown(bill.Id, e)"
-                                         @onpointermove="e => HandleRowPointerMove(bill.Id, e)"
-                                         @onpointerup="e => HandleRowPointerUp(bill.Id, e)"
-                                         @onpointerleave="e => HandleRowPointerLeave(bill.Id, e)">
+                                         @onclick="() => OnBillCardClick(bill.Id)">
                                     <div class="bill-main-top">
                                         <div class="bill-title">@GetTitle(bill)</div>
 
@@ -270,15 +253,11 @@
                                 <div class="side-panel right-panel">
                                     <button class="action-btn edit"
                                             @onclick:stopPropagation="true"
-                                            @onpointerdown:stopPropagation="true"
-                                            @onpointerup:stopPropagation="true"
                                             @onclick='async () => await ShowToastAsync("编辑画面下一步接")'>
                                         编辑
                                     </button>
                                     <button class="action-btn delete"
                                             @onclick:stopPropagation="true"
-                                            @onpointerdown:stopPropagation="true"
-                                            @onpointerup:stopPropagation="true"
                                             @onclick="@(() => DeleteBillAsync(bill.Id))">
                                         删除
                                     </button>
@@ -303,7 +282,7 @@
     {
         <div class="sheet-mask" @onclick="CloseMarkSheet"></div>
         <div class="mark-sheet">
-            <div class="sheet-title">标记实际支付对象</div>
+            <div class="sheet-title">标记实际付款方/收款方</div>
             <div class="sheet-subtitle">当前付款：@GetRoleName(MarkSheetBill.PayerRoleId)</div>
 
             <div class="sheet-role-list">
@@ -334,8 +313,8 @@
     private const long DefaultYiyi2RoleId = 1;
     private const long DefaultSharedRoleId = 3;
 
-    private const double LeftRevealWidth = 120;   // 手指左滑，露出右侧 编辑/删除
-    private const double RightRevealWidth = 60;   // 手指右滑，露出左侧 标记
+    private const double LeftRevealWidth = 120;
+    private const double RightRevealWidth = 60;
     private const double SwipeOpenThreshold = 34;
 
     private enum PeriodMode { Month, Day }
@@ -384,8 +363,8 @@
     private double DragStartX;
     private double DragStartY;
     private double DragCurrentOffset;
-    private double DragBaseOffset;
     private bool DragIsHorizontal;
+    private double DragBaseOffset;
     private long? OpenBillId;
     private SwipeSide OpenSwipeSide = SwipeSide.None;
     private bool ShowMarkRoleSheet;
@@ -429,43 +408,64 @@
             if (roles.Count > 0)
             {
                 RoleItems = roles.Where(x => !x.IsDeleted).ToList();
-                RoleNameMap = RoleItems.Where(x => !string.IsNullOrWhiteSpace(x.Name)).GroupBy(x => x.Id).ToDictionary(g => g.Key, g => g.First().Name!);
+                RoleNameMap = RoleItems
+                    .Where(x => !string.IsNullOrWhiteSpace(x.Name))
+                    .GroupBy(x => x.Id)
+                    .ToDictionary(g => g.Key, g => g.First().Name!);
+
                 YiyiRoleId = FindRoleIdByName(NameYiyi, DefaultYiyiRoleId);
                 Yiyi2RoleId = FindRoleIdByName(NameYiyi2, DefaultYiyi2RoleId);
                 SharedRoleId = FindRoleIdByName(NameShared, DefaultSharedRoleId);
             }
         }
-        catch { }
+        catch
+        {
+        }
 
         try
         {
             var users = await Supabase.GetUsersAsync();
             if (users.Count > 0)
             {
-                UserNameMap = users.Where(x => !x.IsDeleted && !string.IsNullOrWhiteSpace(x.Name)).GroupBy(x => x.Id).ToDictionary(g => g.Key, g => g.First().Name!);
+                UserNameMap = users
+                    .Where(x => !x.IsDeleted && !string.IsNullOrWhiteSpace(x.Name))
+                    .GroupBy(x => x.Id)
+                    .ToDictionary(g => g.Key, g => g.First().Name!);
             }
         }
-        catch { }
+        catch
+        {
+        }
 
         try
         {
             var mainCategories = await Supabase.GetMainCategoriesAsync();
             if (mainCategories.Count > 0)
             {
-                MainCategoryNameMap = mainCategories.Where(x => !string.IsNullOrWhiteSpace(x.Name)).GroupBy(x => x.Id).ToDictionary(g => g.Key, g => g.First().Name!);
+                MainCategoryNameMap = mainCategories
+                    .Where(x => !string.IsNullOrWhiteSpace(x.Name))
+                    .GroupBy(x => x.Id)
+                    .ToDictionary(g => g.Key, g => g.First().Name!);
             }
         }
-        catch { }
+        catch
+        {
+        }
 
         try
         {
             var subCategories = await Supabase.GetSubCategoriesAsync();
             if (subCategories.Count > 0)
             {
-                SubCategoryNameMap = subCategories.Where(x => !string.IsNullOrWhiteSpace(x.Name)).GroupBy(x => x.Id).ToDictionary(g => g.Key, g => g.First().Name!);
+                SubCategoryNameMap = subCategories
+                    .Where(x => !string.IsNullOrWhiteSpace(x.Name))
+                    .GroupBy(x => x.Id)
+                    .ToDictionary(g => g.Key, g => g.First().Name!);
             }
         }
-        catch { }
+        catch
+        {
+        }
     }
 
     private long FindRoleIdByName(string name, long fallbackId)
@@ -655,24 +655,26 @@
     private async Task HandleListPointerUp(Microsoft.AspNetCore.Components.Web.PointerEventArgs e)
     {
         if (!ListPullTracking) return;
-        ListPullTracking = false;
 
-        if (PullDistance >= 56)
+        ListPullTracking = false;
+        var shouldRefresh = PullDistance >= 56;
+        PullDistance = 0;
+
+        if (shouldRefresh)
         {
             IsRefreshingList = true;
             StateHasChanged();
-            await LoadBillsAsync();
-            await Task.Delay(280);
+            await RefreshBillsAsync();
+            await Task.Delay(220);
             IsRefreshingList = false;
         }
 
-        PullDistance = 0;
         StateHasChanged();
     }
 
     private void HandleListPointerLeave(Microsoft.AspNetCore.Components.Web.PointerEventArgs e)
     {
-        if (!ListPullTracking || IsRefreshingList) return;
+        if (IsRefreshingList) return;
         ListPullTracking = false;
         PullDistance = 0;
         StateHasChanged();
@@ -785,6 +787,22 @@
 
     private string GetRowTransformStyle(long billId) => $"transform: translate3d({GetBillOffset(billId)}px,0,0);";
 
+    private string GetShellStateClass(long billId)
+    {
+        if (OpenBillId == billId) return "revealed";
+        if (DragBillId == billId && DragIsHorizontal && Math.Abs(DragCurrentOffset) > 2) return "revealed";
+        return "";
+    }
+
+    private void OnBillCardClick(long billId)
+    {
+        if (OpenBillId == billId && DragBillId is null)
+        {
+            CloseSwipeImmediate();
+            StateHasChanged();
+        }
+    }
+
     private void CloseSwipeImmediate()
     {
         OpenBillId = null;
@@ -831,6 +849,9 @@
             .Where(x =>
                 !x.IsDeleted &&
                 !string.IsNullOrWhiteSpace(x.Name) &&
+                !string.IsNullOrWhiteSpace(x.RoleType) &&
+                (x.RoleType.Equals("human", StringComparison.OrdinalIgnoreCase) ||
+                 x.RoleType.Equals("group", StringComparison.OrdinalIgnoreCase)) &&
                 x.Id != bill.PayerRoleId)
             .OrderBy(x => x.Id);
     }
