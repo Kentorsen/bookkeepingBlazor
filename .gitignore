@@ -9,6 +9,8 @@ obj/
 *.userosscache
 *.sln.docstates
 
+dist/
+
 #####################################
 # Visual Studio
 #####################################
