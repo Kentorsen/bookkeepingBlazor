@@ -896,18 +896,41 @@
 
     private async Task MarkToRoleAsync(long billId, long roleId)
     {
+        // 1. 先执行数据库更新（保持后端同步）
         await Supabase.MarkBillAsync(billId, roleId);
+    
+        // 2. 找到内存中对应的账单对象并直接修改属性
+        var bill = BillItems.FirstOrDefault(b => b.Id == billId);
+        if (bill != null)
+        {
+            bill.MarkedPayerRoleId = roleId;
+        }
+
+        // 3. 关闭弹窗并显示提示，不调用 LoadBillsAsync()
         CloseMarkSheet();
-        await LoadBillsAsync();
         await ShowToastAsync("已标记");
+    
+        // 手动触发 UI 更新，此时只有对应的卡片会变样（加边框），滚动条不会动
+        StateHasChanged();
     }
 
     private async Task CancelMarkAsync(long billId)
     {
+        // 1. 同步数据库
         await Supabase.ClearBillMarkAsync(billId);
+    
+        // 2. 更新内存数据
+        var bill = BillItems.FirstOrDefault(b => b.Id == billId);
+        if (bill != null)
+        {
+            bill.MarkedPayerRoleId = 0; // 清除标记 ID
+        }
+
+        // 3. 仅关闭手势，不重载数据
         CloseSwipeImmediate();
-        await LoadBillsAsync();
         await ShowToastAsync("已取消标记");
+    
+        StateHasChanged();
     }
 
     private async Task DeleteBillAsync(long billId)

@@ -83,25 +83,28 @@
 }
 
 .picker-panel {
-    position: relative;
-    margin: 6px 8px 0;
+    /*  核心修改 1：脱离文档流，变为绝对定位悬浮 */
+    position: absolute;
+    top: 68px; /* 紧贴在区域1的下方 (大概是 8px margin + 50px 高度 + 10px 间隙) */
+    left: 8px;
+    right: 8px;
+    z-index: 1000; /*  核心修改 2：确保它盖在区域2和区域3的上面 */
+    /* 以下是外观和内部布局（保持不变） */
     box-sizing: border-box;
     background: #fff;
-    padding: 6px;
-    overflow: hidden;
-    min-height: 50px;
-    font-size: 13px;
-    width: auto;
-    left: 0px;
+    padding: 12px 10px;
     border-radius: 12px;
-    box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-    z-index: 100;
+    box-shadow: 0 8px 24px rgba(0, 10, 30, 0.15); /* 加深了一点阴影，让悬浮层更有立体感 */
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
 }
 
 .picker-input {
     width: 100% !important;
     max-width: 100%;
-    height: 34px;
+    height: 40px;
+    flex: 0 0 40px; /* 强制占据 40px 高度 */
     border: 1px solid #e6eaf1;
     border-radius: 8px;
     padding: 0 8px;
@@ -110,13 +113,12 @@
     font-size: 16px;
     min-width: 0;
     -webkit-appearance: none;
-    height: 40px;
 }
 
 .picker-actions {
     display: flex;
     gap: 8px;
-    margin-top: 8px;
+    flex: 0 0 32px; /* 强制按钮区域占据固定高度，禁止塌陷 */
 }
 
 .picker-btn {
@@ -172,6 +174,7 @@
         background: #ef9cb8;
         opacity: .85;
         z-index: 0;
+        display: none;
     }
 
 .dot {
@@ -179,16 +182,15 @@
     height: 7px;
     border-radius: 999px;
     border: none;
-    background: #d7dce7;
+    background: #d7dce7; /* 非激活状态颜色 */
     padding: 0;
-    transition: all .2s ease;
+    transition: all .3s cubic-bezier(0.4, 0, 0.2, 1); /* 增加平滑动画 */
     position: relative;
-    z-index: 1;
 }
 
     .dot.active {
         width: 18px;
-        background: transparent;
+        background: #ef9cb8;
     }
 
 .collapse-btn {
