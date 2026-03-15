@@ -2,40 +2,153 @@
 using BookkeepingBlazor.Pages;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Net.NetworkInformation;
 using System.Text;
 using System.Text.Json;
+using Microsoft.JSInterop;
 
 namespace BookkeepingBlazor.Services
 {
     public class SupabaseService
     {
-        //private const string SupabaseUrl = "https://wklbdlsjgbqfalrfomfe.supabase.co";
-        //private const string SupabaseAnonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndrbGJkbHNqZ2JxZmFscmZvbWZlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIzNTUyODMsImV4cCI6MjA4NzkzMTI4M30.YvWTV6Ed1xKj0-u5czeVhiKrIO2anKlFQ4Uh4BKIBSE";
-
-        //private readonly HttpClient _http;
-
-        //public SupabaseService(HttpClient http)
-        //{
-        //    _http = http;
-        //}
-
         private readonly string SupabaseUrl;
         private readonly string SupabaseAnonKey;
         private readonly HttpClient _http;
+        private readonly IJSRuntime _js; // 💡 新增 JS 运行时
+        private string? _cachedToken; // 💡 用于在内存中记住 Token
 
-        public SupabaseService(HttpClient http, IConfiguration config)
+        public SupabaseService(HttpClient http, IConfiguration config, IJSRuntime js)
         {
             _http = http;
-            // 💡 自动根据当前环境读取对应的配置
+            _js = js;
             SupabaseUrl = config["Supabase:Url"];
             SupabaseAnonKey = config["Supabase:Key"];
         }
 
+        // 💡 核心修改：如果有用户 Token 就用用户的，没有才用匿名的
         private void ApplyAuthHeaders(HttpRequestMessage request)
         {
             request.Headers.Add("apikey", SupabaseAnonKey);
-            request.Headers.Authorization =
-                new AuthenticationHeaderValue("Bearer", SupabaseAnonKey);
+            var token = !string.IsNullOrEmpty(_cachedToken) ? _cachedToken : SupabaseAnonKey;
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        }
+
+        // ================= 新增：处理 Token 和登录检查 =================
+
+        // 1. 检查网址里有没有邮箱跳回来带的 Token，或者本地缓存的 Token
+        public async Task CheckHandleAuthTokenAsync()
+        {
+            var hash = await _js.InvokeAsync<string>("authHelper.getHashValue");
+            if (!string.IsNullOrEmpty(hash) && hash.Contains("access_token="))
+            {
+                var token = hash.Split('&').FirstOrDefault(x => x.Contains("access_token="))?.Split('=')[1];
+                if (!string.IsNullOrEmpty(token))
+                {
+                    _cachedToken = token;
+                    await _js.InvokeVoidAsync("authHelper.setItem", "sb-token", token);
+                    await _js.InvokeVoidAsync("authHelper.clearHash"); // 把网址擦干净
+                }
+            }
+            else
+            {
+                _cachedToken = await _js.InvokeAsync<string>("authHelper.getItem", "sb-token");
+            }
+        }
+
+        // 2. 验证当前是否已登录
+        public async Task<bool> IsLoggedInAsync()
+        {
+            if (string.IsNullOrEmpty(_cachedToken)) return false;
+
+            var request = new HttpRequestMessage(HttpMethod.Get, $"{SupabaseUrl}/auth/v1/user");
+            ApplyAuthHeaders(request);
+            var response = await _http.SendAsync(request);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                // 如果报错说明 Token 过期了，清理掉
+                await _js.InvokeVoidAsync("authHelper.removeItem", "sb-token");
+                _cachedToken = null;
+                return false;
+            }
+            return true;
+        }
+
+        // 3. 解析出当前登录的邮箱
+        private async Task<string?> GetCurrentUserEmailAsync()
+        {
+            if (string.IsNullOrEmpty(_cachedToken)) return null;
+
+            var request = new HttpRequestMessage(HttpMethod.Get, $"{SupabaseUrl}/auth/v1/user");
+            ApplyAuthHeaders(request);
+            var response = await _http.SendAsync(request);
+
+            if (!response.IsSuccessStatusCode) return null;
+
+            var json = await response.Content.ReadAsStringAsync();
+            using var doc = JsonDocument.Parse(json);
+            return doc.RootElement.GetProperty("email").GetString();
+        }
+
+        // 4. 拿着邮箱去 users 表里换取真实数字 ID
+        public async Task<long> GetCurrentAppUserIdAsync()
+        {
+            var email = await GetCurrentUserEmailAsync();
+            if (string.IsNullOrEmpty(email)) return 0;
+
+            // 💡 利用 Supabase API 直接查询邮箱匹配的 ID
+            var users = await GetListAsync<AppUser>($"users?email=eq.{email}&select=id");
+            return users.FirstOrDefault()?.Id ?? 0;
+        }
+
+        // ================= 验证码登录流程 =================
+
+        // 1. 发送 6 位数验证码
+        public async Task SendOtpAsync(string email)
+        {
+            var payload = new { email = email };
+            var json = JsonSerializer.Serialize(payload);
+
+            var request = new HttpRequestMessage(HttpMethod.Post, $"{SupabaseUrl}/auth/v1/otp");
+            request.Headers.Add("apikey", SupabaseAnonKey);
+            request.Content = new StringContent(json, Encoding.UTF8, "application/json");
+
+            var response = await _http.SendAsync(request);
+            if (!response.IsSuccessStatusCode)
+            {
+                var err = await response.Content.ReadAsStringAsync();
+                throw new Exception($"发送失败: {err}");
+            }
+        }
+
+        // 2. 拿着用户输入的验证码去校验
+        public async Task<string?> VerifyOtpAsync(string email, string token)
+        {
+            // type = "email" 表示我们要验证的是邮箱的 6 位数字验证码
+            var payload = new { type = "email", email = email, token = token };
+            var json = JsonSerializer.Serialize(payload);
+
+            var request = new HttpRequestMessage(HttpMethod.Post, $"{SupabaseUrl}/auth/v1/verify");
+            request.Headers.Add("apikey", SupabaseAnonKey);
+            request.Content = new StringContent(json, Encoding.UTF8, "application/json");
+
+            var response = await _http.SendAsync(request);
+            if (!response.IsSuccessStatusCode)
+            {
+                throw new Exception("验证码错误或已过期！");
+            }
+
+            // 验证成功！提取 Token 并存起来
+            var responseJson = await response.Content.ReadAsStringAsync();
+            using var doc = JsonDocument.Parse(responseJson);
+            var accessToken = doc.RootElement.GetProperty("access_token").GetString();
+
+            if (!string.IsNullOrEmpty(accessToken))
+            {
+                _cachedToken = accessToken;
+                await _js.InvokeVoidAsync("authHelper.setItem", "sb-token", accessToken);
+            }
+            return accessToken;
         }
 
         private async Task<List<T>> GetListAsync<T>(string relativeUrl)

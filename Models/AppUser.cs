@@ -11,6 +11,9 @@ namespace BookkeepingBlazor.Models
         [JsonPropertyName("name")]
         public string? Name { get; set; }
 
+        [JsonPropertyName("email")]
+        public string? Email { get; set; }
+
         [JsonPropertyName("is_deleted")]
         public bool IsDeleted { get; set; }
     }

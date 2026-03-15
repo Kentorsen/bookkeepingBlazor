@@ -289,11 +289,20 @@
 
         try
         {
+            // 💡 1. 在保存前，先去管家那里问出当前是谁在操作
+            var currentUserId = await Supabase.GetCurrentAppUserIdAsync();
+            if (currentUserId == 0)
+            {
+                ShowToast("获取用户身份失败，请检查邮箱是否在 users 表中");
+                return;
+            }
+
             Bill savedBill;
             if (BillId.HasValue && BillId.Value > 0)
             {
                 // 执行更新
                 Model.UpdatedAt = DateTime.UtcNow;
+                Model.UpdatedBy = currentUserId; // 💡 动态赋值更新者
                 await Supabase.UpdateBillAsync(Model);
                 savedBill = Model;
             }
@@ -301,16 +310,15 @@
             {
                 // 执行新增
                 Model.CreatedAt = DateTime.UtcNow;
-                Model.CreatedBy = 1;
+                Model.CreatedBy = currentUserId; // 💡 动态赋值创建者
                 Model.UpdatedAt = DateTime.UtcNow;
-                Model.UpdatedBy = 1;
+                Model.UpdatedBy = currentUserId; // 💡 动态赋值更新者
                 Model.IsDeleted = false;
                 
                 var newBill = await Supabase.InsertBillAsync(Model);
                 savedBill = newBill ?? Model;
             }
 
-            // 💡 通知父组件 (Bills.razor) 保存成功，并将数据传过去更新画面
             await OnSaved.InvokeAsync(savedBill);
         }
         catch (Exception ex)

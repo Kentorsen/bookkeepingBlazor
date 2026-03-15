@@ -1,0 +1,114 @@
+﻿@page "/login"
+@using BookkeepingBlazor.Services
+@inject SupabaseService Supabase
+@inject NavigationManager Nav
+
+<div style="max-width: 400px; margin: 100px auto; padding: 24px; text-align: center; background: #fff; border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.05); font-family: sans-serif;">
+    <h2 style="color: #27314a; margin-bottom: 8px;">记账本登录</h2>
+    <p style="color: #8a93a7; font-size: 13px; margin-bottom: 24px;">为了安全，请输入邮箱获取验证码</p>
+    
+    @if (!IsCodeSent)
+    {
+        <input type="email" @bind="Email" placeholder="输入邮箱地址"
+               style="width: 100%; padding: 14px; margin-bottom: 16px; border: 1px solid #e8e8ee; border-radius: 10px; box-sizing: border-box; font-size: 15px; outline: none;" />
+        
+        <button @onclick="SendCode" disabled="@IsLoading"
+                style="width: 100%; padding: 14px; background: #ef9cb8; color: white; border: none; border-radius: 10px; font-weight: bold; cursor: pointer; font-size: 15px;">
+            @(IsLoading ? "发送中..." : "获取验证码")
+        </button>
+    }
+    else
+    {
+        <p style="font-size: 13px; color: #18a867; margin-bottom: 16px; background: #e8f7f0; padding: 10px; border-radius: 8px;">
+            ✅ 验证码已发送至 <b>@Email</b>
+        </p>
+
+        <input type="text" @bind="Code" placeholder="输入 8 位验证码" maxlength="8"
+               style="width: 100%; padding: 14px; margin-bottom: 16px; border: 1px solid #84a4ff; border-radius: 10px; box-sizing: border-box; font-size: 18px; text-align: center; letter-spacing: 4px; outline: none;" />
+        
+        <button @onclick="VerifyCode" disabled="@IsLoading"
+                style="width: 100%; padding: 14px; background: #84a4ff; color: white; border: none; border-radius: 10px; font-weight: bold; cursor: pointer; font-size: 15px;">
+            @(IsLoading ? "验证中..." : "确 认 登 录")
+        </button>
+        
+        <button @onclick="ResetForm" style="margin-top: 16px; background: none; border: none; color: #8a93a7; font-size: 13px; cursor: pointer; text-decoration: underline;">
+            修改邮箱
+        </button>
+    }
+
+    @if (!string.IsNullOrEmpty(Message))
+    {
+        <div style="margin-top: 20px; padding: 12px; border-radius: 8px; background: #fdf2f5; color: #d63384; font-size: 13px;">
+            @Message
+        </div>
+    }
+</div>
+
+@code {
+    private string Email { get; set; } = "";
+    private string Code { get; set; } = "";
+    private string Message { get; set; } = "";
+    private bool IsCodeSent = false;
+    private bool IsLoading = false;
+
+    private async Task SendCode()
+    {
+        if (string.IsNullOrWhiteSpace(Email) || !Email.Contains("@"))
+        {
+            Message = "请输入有效的邮箱地址";
+            return;
+        }
+        
+        IsLoading = true;
+        Message = "";
+        try
+        {
+            await Supabase.SendOtpAsync(Email);
+            IsCodeSent = true;
+        }
+        catch (Exception ex)
+        {
+            Message = "❌ " + ex.Message;
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+
+    private async Task VerifyCode()
+    {
+        if (string.IsNullOrWhiteSpace(Code))
+        {
+            Message = "请输入验证码";
+            return;
+        }
+
+        IsLoading = true;
+        Message = "";
+        try
+        {
+            var token = await Supabase.VerifyOtpAsync(Email, Code);
+            if (!string.IsNullOrEmpty(token))
+            {
+                // 验证成功，跳转到账单主页！
+                Nav.NavigateTo("/bills");
+            }
+        }
+        catch (Exception ex)
+        {
+            Message = "❌ " + ex.Message;
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+
+    private void ResetForm()
+    {
+        IsCodeSent = false;
+        Code = "";
+        Message = "";
+    }
+}
