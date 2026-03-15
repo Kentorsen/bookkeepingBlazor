@@ -1,0 +1,224 @@
+﻿@page "/bill/add"
+@using BookkeepingBlazor.Models
+@using BookkeepingBlazor.Services
+@inject SupabaseService Supabase
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+<div class="editor-app">
+    <header class="editor-header">
+        <button class="nav-btn" @onclick="GoBack">取消</button>
+        
+        <div class="type-switcher">
+            <button class="switch-btn @(Model.IoType == 1 ? "active" : "")"
+                    @onclick="() => SetIoType(1)">
+                支出
+            </button>
+            <button class="switch-btn @(Model.IoType == 2 ? "active" : "")"
+                    @onclick="() => SetIoType(2)">
+                收入
+            </button>
+        </div>
+        
+        <button class="nav-btn primary" @onclick="SaveBillAsync">保存</button>
+    </header>
+
+    <div class="editor-content">
+        <section class="form-section amount-section">
+            <div class="amount-wrapper @(Model.IoType == 1 ? "expense" : "income")">
+                <span class="currency">¥</span>
+                <input type="number" inputmode="decimal" class="amount-input"
+                       placeholder="0.00" @bind="Model.Amount" />
+            </div>
+        </section>
+
+        <section class="form-section">
+            <div class="section-header">
+                <div class="section-title">分类</div>
+                <button class="edit-text-btn" @onclick='() => ShowToast("分类编辑功能开发中...")'>编辑分类</button>
+            </div>
+            
+            <div class="category-grid">
+                @foreach (var cat in MainCategories)
+                {
+                    <button class="chip @(Model.MainCategoryId == cat.Id ? "active" : "")"
+                            @onclick="() => SelectMainCategory(cat.Id)">
+                        @cat.Name
+                    </button>
+                }
+            </div>
+
+            @if (Model.MainCategoryId > 0 && SubCategories.Any(x => x.MainCategoryId == Model.MainCategoryId))
+            {
+                <div class="sub-category-grid">
+                    @foreach (var sub in SubCategories.Where(x => x.MainCategoryId == Model.MainCategoryId))
+                    {
+                        <button class="chip sub @(Model.SubCategoryId == sub.Id ? "active" : "")"
+                                @onclick="() => SelectSubCategory(sub.Id)">
+                            @sub.Name
+                        </button>
+                    }
+                </div>
+            }
+        </section>
+
+        <section class="form-section list-section">
+            <div class="form-row">
+                <label>日期</label>
+                <input type="date" class="row-input" @bind="Model.BillDate" @bind:format="yyyy-MM-dd" />
+            </div>
+            <div class="form-row">
+                <label>名称</label>
+                <input type="text" class="row-input" placeholder="输入账单名称(选填)" @bind="Model.Title" />
+            </div>
+            <div class="form-row">
+                <label>额外</label>
+                <label class="toggle-switch">
+                    <input type="checkbox" @bind="Model.IsExtra" />
+                    <span class="slider"></span>
+                </label>
+            </div>
+        </section>
+
+        <section class="form-section list-section">
+            <div class="form-row column-layout">
+                <label>所属方</label>
+                <div class="chip-row">
+                    @foreach (var role in Roles.Where(r => r.RoleType != "pet"))
+                    {
+                        <button class="chip small @(Model.OwnerRoleId == role.Id ? "active" : "")"
+                                @onclick="() => Model.OwnerRoleId = role.Id">
+                            @role.Name
+                        </button>
+                    }
+                </div>
+            </div>
+
+            <div class="form-row column-layout">
+                <label>@(Model.IoType == 1 ? "付款方" : "收款方")</label>
+                <div class="chip-row">
+                    @foreach (var role in Roles.Where(r => r.RoleType != "pet"))
+                    {
+                        <button class="chip small @(Model.PayerRoleId == role.Id ? "active" : "")"
+                                @onclick="() => Model.PayerRoleId = role.Id">
+                            @role.Name
+                        </button>
+                    }
+                </div>
+            </div>
+
+            <div class="form-row column-layout">
+                <label>标记 (可选)</label>
+                <div class="chip-row">
+                    <button class="chip small @(Model.MarkedPayerRoleId == 0 ? "active" : "")"
+                            @onclick="() => Model.MarkedPayerRoleId = 0">
+                        无
+                    </button>
+                    @foreach (var role in Roles.Where(r => r.RoleType != "pet"))
+                    {
+                        <button class="chip small @(Model.MarkedPayerRoleId == role.Id ? "active" : "")"
+                                @onclick="() => Model.MarkedPayerRoleId = role.Id">
+                            @role.Name
+                        </button>
+                    }
+                </div>
+            </div>
+        </section>
+    </div>
+
+    @if (ShowToastFlag)
+    {
+        <div class="toast-box">@ToastMessage</div>
+    }
+</div>
+
+@code {
+    private Bill Model = new Bill();
+    private List<RoleInfo> Roles = new();
+    private List<MainCategoryInfo> MainCategories = new();
+    private List<SubCategoryInfo> SubCategories = new();
+
+    private bool ShowToastFlag;
+    private string ToastMessage = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        // 加载基础数据
+        Roles = await Supabase.GetRolesAsync();
+        MainCategories = await Supabase.GetMainCategoriesAsync();
+        SubCategories = await Supabase.GetSubCategoriesAsync();
+
+        // 设定默认值
+        Model.IoType = 1; // 默认支出
+        Model.IsExtra = false; // 默认非额外
+        Model.BillDate = DateTime.Today; // 默认今天
+        Model.MarkedPayerRoleId = 0; // 默认无标记
+
+        // 尝试找到“共同”的 RoleId (假设你的数据里“共同”对应的 RoleType 是 group)
+        var sharedRole = Roles.FirstOrDefault(r => r.RoleType == "group") ?? Roles.FirstOrDefault();
+        if (sharedRole != null)
+        {
+            Model.OwnerRoleId = sharedRole.Id;
+            Model.PayerRoleId = sharedRole.Id;
+        }
+    }
+
+    private void SetIoType(short type)
+    {
+        Model.IoType = type;
+        // 切换收支时，可以清空分类，让用户重选
+        Model.MainCategoryId = 0;
+        Model.SubCategoryId = null;
+    }
+
+    private void SelectMainCategory(long id)
+    {
+        Model.MainCategoryId = id;
+        Model.SubCategoryId = null; // 切换主分类时清空子分类
+    }
+
+    private void SelectSubCategory(long id) => Model.SubCategoryId = id;
+
+    private async Task SaveBillAsync()
+    {
+        if (Model.Amount <= 0)
+        {
+            ShowToast("请输入有效金额");
+            return;
+        }
+        if (Model.MainCategoryId == 0)
+        {
+            ShowToast("请选择分类");
+            return;
+        }
+
+        // 补全审计字段 (假设当前操作人是一一，Id=1，实际应从登录状态获取)
+        Model.CreatedAt = DateTime.UtcNow;
+        Model.CreatedBy = 1;
+        Model.UpdatedAt = DateTime.UtcNow;
+        Model.UpdatedBy = 1;
+        Model.IsDeleted = false;
+
+        try
+        {
+            await Supabase.InsertBillAsync(Model);
+            Nav.NavigateTo("/bills"); // 保存成功后返回主页
+        }
+        catch (Exception ex)
+        {
+            ShowToast("保存失败: " + ex.Message);
+        }
+    }
+
+    private void GoBack() => Nav.NavigateTo("/bills");
+
+    private async void ShowToast(string message)
+    {
+        ToastMessage = message;
+        ShowToastFlag = true;
+        StateHasChanged();
+        await Task.Delay(2000);
+        ShowToastFlag = false;
+        StateHasChanged();
+    }
+}
