@@ -1,4 +1,8 @@
 ﻿.editor-app {
+    /* 变成固定定位悬浮层 */
+    position: fixed;
+    inset: 0;
+    z-index: 200; /* 层级极高，盖住所有内容 */
     height: 100dvh;
     width: 100vw;
     display: flex;
@@ -6,18 +10,32 @@
     background: #f6f7f9;
     color: #1f2430;
     overflow: hidden;
-    position: relative;
+}
+
+/* 顶部添加/编辑提示字体的样式 */
+.editor-mode-indicator {
+    position: absolute;
+    top: 10px; /* 💡 固定在最顶部 */
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 11px;
+    color: #8a93a7;
+    font-weight: 700;
+    background: #eef1f5;
+    padding: 2px 10px;
+    border-radius: 10px;
 }
 
 .editor-header {
-    flex: 0 0 56px;
+    flex: 0 0 80px; /* 💡 增加高度，从 56px 加到 72px */
     display: flex;
     justify-content: space-between;
-    align-items: center;
-    padding: 0 16px;
+    align-items: flex-end; /* 💡 让“取消”、“保存”和“切换器”沉到底部对齐 */
+    padding: 0 16px 10px 16px; /* 💡 增加底部内边距，让按钮别太贴底 */
     background: #fff;
     border-bottom: 1px solid #e8e8ee;
     z-index: 10;
+    position: relative;
 }
 
 .nav-btn {

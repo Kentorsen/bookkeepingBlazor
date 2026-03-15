@@ -1,12 +1,14 @@
-﻿@page "/bill/add"
-@using BookkeepingBlazor.Models
+﻿@using BookkeepingBlazor.Models
 @using BookkeepingBlazor.Services
 @inject SupabaseService Supabase
-@inject NavigationManager Nav
 @inject IJSRuntime JS
 
 <div class="editor-app">
     <header class="editor-header">
+        <div class="editor-mode-indicator">
+            @(BillId.HasValue && BillId.Value > 0 ? "当前：编辑账单" : "当前：添加账单")
+        </div>
+
         <button class="nav-btn" @onclick="GoBack">取消</button>
         
         <div class="type-switcher">
@@ -163,19 +165,24 @@
 </div>
 
 @code {
+    // 💡 新增的组件交互参数
+    [Parameter] public long? BillId { get; set; }
+    [Parameter] public DateTime InitialDate { get; set; } = DateTime.Today; // 💡 新增参数
+    [Parameter] public EventCallback<Bill> OnSaved { get; set; }
+    [Parameter] public EventCallback OnCanceled { get; set; }
+
     private Bill Model = new Bill();
     private List<RoleInfo> Roles = new();
     private List<MainCategoryInfo> MainCategories = new();
     private List<SubCategoryInfo> SubCategories = new();
-    
+
     private bool ShowToastFlag;
     private string ToastMessage = "";
 
-    // --- 分类管理状态 ---
     private bool ShowCatInputDialog = false;
     private string CatInputName = "";
     private string CatInputTitle = "";
-    private int CatInputMode = 0; // 1:新主, 2:改主, 3:新子, 4:改子
+    private int CatInputMode = 0;
     private long EditingCatId = 0;
     private long TargetMainCatId = 0;
 
@@ -185,16 +192,29 @@
         MainCategories = await Supabase.GetMainCategoriesAsync();
         SubCategories = await Supabase.GetSubCategoriesAsync();
 
-        Model.IoType = 1;
-        Model.IsExtra = false;
-        Model.BillDate = DateTime.Today;
-        Model.MarkedPayerRoleId = 0;
-
-        var sharedRole = Roles.FirstOrDefault(r => r.RoleType == "group") ?? Roles.FirstOrDefault();
-        if (sharedRole != null)
+        // 💡 如果传入了 ID，则是【编辑模式】，去数据库查出现存数据
+        if (BillId.HasValue && BillId.Value > 0)
         {
-            Model.OwnerRoleId = sharedRole.Id;
-            Model.PayerRoleId = sharedRole.Id;
+            var dbBill = await Supabase.GetBillByIdAsync(BillId.Value);
+            if (dbBill != null)
+            {
+                Model = dbBill;
+            }
+        }
+        else
+        {
+            // 【新增模式】：设定默认值
+            Model.IoType = 1;
+            Model.IsExtra = false;
+            Model.BillDate = InitialDate;
+            Model.MarkedPayerRoleId = 0;
+
+            var sharedRole = Roles.FirstOrDefault(r => r.RoleType == "group") ?? Roles.FirstOrDefault();
+            if (sharedRole != null)
+            {
+                Model.OwnerRoleId = sharedRole.Id;
+                Model.PayerRoleId = sharedRole.Id;
+            }
         }
     }
 
@@ -205,7 +225,6 @@
         Model.SubCategoryId = null;
     }
 
-    // ========== 双击/单击响应逻辑 ==========
     private void HandleMainCategoryClick(long id)
     {
         if (Model.MainCategoryId == id)
@@ -232,7 +251,6 @@
             Model.SubCategoryId = id;
         }
     }
-    // ===============================================
 
     private void SetPayer(long roleId)
     {
@@ -261,7 +279,7 @@
 
     private async Task SaveBillAsync()
     {
-        if (Model.Amount == 0) { ShowToast("金额不能为 0"); return; }
+        if (Model.Amount <= 0) { ShowToast("金额必须大于 0"); return; }
         if (Model.MainCategoryId == 0) { ShowToast("请选择主类别"); return; }
         if (Model.BillDate == null || Model.BillDate == default(DateTime)) { ShowToast("日期不能为空"); return; }
         if (string.IsNullOrWhiteSpace(Model.Title)) { ShowToast("名称不能为空"); return; }
@@ -269,16 +287,31 @@
         if (Model.PayerRoleId == 0) { ShowToast("请选择付款方/收款方"); return; }
         if (Model.MarkedPayerRoleId < 0) { ShowToast("标记信息有误"); return; }
 
-        Model.CreatedAt = DateTime.UtcNow;
-        Model.CreatedBy = 1;
-        Model.UpdatedAt = DateTime.UtcNow;
-        Model.UpdatedBy = 1;
-        Model.IsDeleted = false;
-
         try
         {
-            await Supabase.InsertBillAsync(Model);
-            Nav.NavigateTo("/bills");
+            Bill savedBill;
+            if (BillId.HasValue && BillId.Value > 0)
+            {
+                // 执行更新
+                Model.UpdatedAt = DateTime.UtcNow;
+                await Supabase.UpdateBillAsync(Model);
+                savedBill = Model;
+            }
+            else
+            {
+                // 执行新增
+                Model.CreatedAt = DateTime.UtcNow;
+                Model.CreatedBy = 1;
+                Model.UpdatedAt = DateTime.UtcNow;
+                Model.UpdatedBy = 1;
+                Model.IsDeleted = false;
+                
+                var newBill = await Supabase.InsertBillAsync(Model);
+                savedBill = newBill ?? Model;
+            }
+
+            // 💡 通知父组件 (Bills.razor) 保存成功，并将数据传过去更新画面
+            await OnSaved.InvokeAsync(savedBill);
         }
         catch (Exception ex)
         {
@@ -286,7 +319,11 @@
         }
     }
 
-    private void GoBack() => Nav.NavigateTo("/bills");
+    private async Task GoBack()
+    {
+        // 💡 通知父组件取消操作，关闭弹层
+        await OnCanceled.InvokeAsync();
+    }
 
     private async void ShowToast(string message)
     {
@@ -298,122 +335,68 @@
         StateHasChanged();
     }
 
-    // ================= 分类增删改逻辑 (真实对接DB) =================
-    private void OpenAddMainCategory()
-    {
-        CatInputMode = 1; CatInputTitle = "新增主分类"; CatInputName = ""; ShowCatInputDialog = true;
-    }
-    private void OpenEditMainCategory(MainCategoryInfo cat)
-    {
-        CatInputMode = 2; CatInputTitle = "编辑主分类"; CatInputName = cat.Name ?? ""; EditingCatId = cat.Id; ShowCatInputDialog = true;
-    }
-    private void OpenAddSubCategory(long mainCatId)
-    {
-        CatInputMode = 3; CatInputTitle = "新增子分类"; CatInputName = ""; TargetMainCatId = mainCatId; ShowCatInputDialog = true;
-    }
-    private void OpenEditSubCategory(SubCategoryInfo sub)
-    {
-        CatInputMode = 4; CatInputTitle = "编辑子分类"; CatInputName = sub.Name ?? ""; EditingCatId = sub.Id; ShowCatInputDialog = true;
-    }
+    // 分类增删改逻辑 (保持不变)
+    private void OpenAddMainCategory() { CatInputMode = 1; CatInputTitle = "新增主分类"; CatInputName = ""; ShowCatInputDialog = true; }
+    private void OpenEditMainCategory(MainCategoryInfo cat) { CatInputMode = 2; CatInputTitle = "编辑主分类"; CatInputName = cat.Name ?? ""; EditingCatId = cat.Id; ShowCatInputDialog = true; }
+    private void OpenAddSubCategory(long mainCatId) { CatInputMode = 3; CatInputTitle = "新增子分类"; CatInputName = ""; TargetMainCatId = mainCatId; ShowCatInputDialog = true; }
+    private void OpenEditSubCategory(SubCategoryInfo sub) { CatInputMode = 4; CatInputTitle = "编辑子分类"; CatInputName = sub.Name ?? ""; EditingCatId = sub.Id; ShowCatInputDialog = true; }
     private void CloseCatInput() => ShowCatInputDialog = false;
 
-    // 确认保存分类 (新增/修改)
     private async Task ConfirmCatInput()
     {
         if (string.IsNullOrWhiteSpace(CatInputName)) { ShowToast("名称不能为空"); return; }
-
         try
         {
             if (CatInputMode == 1)
             {
                 var newCat = await Supabase.InsertMainCategoryAsync(new MainCategoryInfo { Name = CatInputName, Type = Model.IoType });
-                if (newCat != null)
-                {
-                    MainCategories.Add(newCat);
-                    Model.MainCategoryId = newCat.Id; // 新增后自动选中
-                    ShowToast("已新增主分类");
-                }
+                if (newCat != null) { MainCategories.Add(newCat); Model.MainCategoryId = newCat.Id; ShowToast("已新增主分类"); }
             }
             else if (CatInputMode == 2)
             {
                 await Supabase.UpdateMainCategoryAsync(EditingCatId, CatInputName);
-                // 同步更新本地内存，不用重新刷整个列表
                 var cat = MainCategories.FirstOrDefault(c => c.Id == EditingCatId);
-                if (cat != null) cat.Name = CatInputName;
-                ShowToast("已修改主分类");
+                if (cat != null) cat.Name = CatInputName; ShowToast("已修改主分类");
             }
             else if (CatInputMode == 3)
             {
                 var newSub = await Supabase.InsertSubCategoryAsync(new SubCategoryInfo { MainCategoryId = TargetMainCatId, Name = CatInputName });
-                if (newSub != null)
-                {
-                    SubCategories.Add(newSub);
-                    Model.SubCategoryId = newSub.Id; // 新增后自动选中
-                    ShowToast("已新增子分类");
-                }
+                if (newSub != null) { SubCategories.Add(newSub); Model.SubCategoryId = newSub.Id; ShowToast("已新增子分类"); }
             }
             else if (CatInputMode == 4)
             {
                 await Supabase.UpdateSubCategoryAsync(EditingCatId, CatInputName);
                 var sub = SubCategories.FirstOrDefault(s => s.Id == EditingCatId);
-                if (sub != null) sub.Name = CatInputName;
-                ShowToast("已修改子分类");
+                if (sub != null) sub.Name = CatInputName; ShowToast("已修改子分类");
             }
         }
-        catch (Exception ex)
-        {
-            ShowToast("操作失败: " + ex.Message);
-        }
-
+        catch (Exception ex) { ShowToast("操作失败: " + ex.Message); }
         CloseCatInput();
     }
 
-    // 确认删除分类 (软删除 + 级联删除)
     private async Task DeleteCurrentCategory()
     {
         try
         {
-            if (CatInputMode == 2) // 删除主类
+            if (CatInputMode == 2)
             {
-                // 1. 软删除 DB 中的主类别
                 await Supabase.SoftDeleteMainCategoryAsync(EditingCatId);
-                
-                // 2. 软删除 DB 中关联的所有子类别 (级联删除)
                 await Supabase.SoftDeleteSubCategoriesByMainIdAsync(EditingCatId);
-
-                // 3. 同步更新内存中的主类别状态
                 var cat = MainCategories.FirstOrDefault(c => c.Id == EditingCatId);
                 if (cat != null) cat.IsDeleted = true;
-
-                // 4. 同步更新内存中的所有子类别状态，让画面上的子分类也瞬间消失
                 var relatedSubs = SubCategories.Where(s => s.MainCategoryId == EditingCatId).ToList();
-                foreach (var sub in relatedSubs)
-                {
-                    sub.IsDeleted = true;
-                }
-
-                // 5. 清空当前表单的选中状态
-                Model.MainCategoryId = 0;
-                Model.SubCategoryId = null; // 连同子分类的选中状态一起清空
-                
-                ShowToast("已删除主分类及其子分类");
+                foreach (var sub in relatedSubs) { sub.IsDeleted = true; }
+                Model.MainCategoryId = 0; Model.SubCategoryId = null; ShowToast("已删除主分类及其子分类");
             }
-            else if (CatInputMode == 4) // 删除子类
+            else if (CatInputMode == 4)
             {
                 await Supabase.SoftDeleteSubCategoryAsync(EditingCatId);
-                
                 var sub = SubCategories.FirstOrDefault(s => s.Id == EditingCatId);
                 if (sub != null) sub.IsDeleted = true;
-                
-                Model.SubCategoryId = null; // 清空选中状态
-                ShowToast("已删除子分类");
+                Model.SubCategoryId = null; ShowToast("已删除子分类");
             }
         }
-        catch (Exception ex)
-        {
-            ShowToast("删除失败: " + ex.Message);
-        }
-        
+        catch (Exception ex) { ShowToast("删除失败: " + ex.Message); }
         CloseCatInput();
     }
 }

@@ -1,7 +1,8 @@
-﻿using System.Net.Http.Headers;
+﻿using BookkeepingBlazor.Models;
+using BookkeepingBlazor.Pages;
+using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
-using BookkeepingBlazor.Models;
 
 namespace BookkeepingBlazor.Services
 {
@@ -127,19 +128,6 @@ namespace BookkeepingBlazor.Services
                 });
         }
 
-        public async Task InsertBillAsync(Bill newBill)
-        {
-            var json = JsonSerializer.Serialize(newBill);
-            var request = new HttpRequestMessage(HttpMethod.Post, $"{SupabaseUrl}/rest/v1/bills");
-
-            ApplyAuthHeaders(request);
-            request.Headers.Add("Prefer", "return=minimal");
-            request.Content = new StringContent(json, Encoding.UTF8, "application/json");
-
-            var response = await _http.SendAsync(request);
-            response.EnsureSuccessStatusCode();
-        }
-
         // ================= 核心：带有返回值的 POST 请求 =================
         // 用于在插入数据后，要求 Supabase 直接返回插入成功的数据（包含自动生成的 ID）
         private async Task<T?> PostAndReturnAsync<T>(string relativeUrl, object payload)
@@ -218,6 +206,39 @@ namespace BookkeepingBlazor.Services
         {
             // 利用 Supabase (PostgREST) 的特性，直接根据 main_category_id 批量更新
             return PatchAsync($"sub_categories?main_category_id=eq.{mainCategoryId}", new { is_deleted = true });
+        }
+
+        // --- 编辑 ---
+        // 1. 获取单条账单数据（用于编辑时回显）
+        public async Task<Bill?> GetBillByIdAsync(long id)
+        {
+            var list = await GetListAsync<Bill>($"bills?id=eq.{id}");
+            return list.FirstOrDefault();
+        }
+
+        // 2. 修改现有的 InsertBillAsync，让它使用 PostAndReturnAsync 返回包含自增ID的完整数据
+        public Task<Bill?> InsertBillAsync(Bill bill)
+        {
+            return PostAndReturnAsync<Bill>("bills", bill);
+        }
+
+        // 3. 更新账单
+        public Task UpdateBillAsync(Bill bill)
+        {
+            return PatchAsync($"bills?id=eq.{bill.Id}", new
+            {
+                io_type = bill.IoType,
+                main_category_id = bill.MainCategoryId,
+                sub_category_id = bill.SubCategoryId,
+                title = bill.Title,
+                amount = bill.Amount,
+                owner_role_id = bill.OwnerRoleId,
+                payer_role_id = bill.PayerRoleId,
+                bill_date = bill.BillDate?.ToString("yyyy-MM-dd"), // 日期转字符串
+                is_extra = bill.IsExtra,
+                marked_payer_role_id = bill.MarkedPayerRoleId,
+                updated_at = DateTime.UtcNow
+            });
         }
     }
 }

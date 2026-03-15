@@ -192,7 +192,12 @@
 
                         @foreach (var bill in group.Items)
                         {
-                            <div class="swipe-shell @(bill.MarkedPayerRoleId > 0 ? "marked" : "") @(bill.IsExtra ? "extra" : "") @GetShellStateClass(bill.Id)">
+                            <div class="swipe-shell 
+                                @(bill.MarkedPayerRoleId > 0 ? "marked" : "") 
+                                @(bill.IsExtra ? "extra" : "")
+                                @GetShellStateClass(bill.Id)
+                                @(HighlightedBillId == bill.Id ? "highlight-active" : "")"
+                                 >
                                 <div class="side-panel left-panel">
                                     @if (bill.MarkedPayerRoleId > 0)
                                     {
@@ -255,8 +260,7 @@
 
                                 <div class="side-panel right-panel">
                                     <button class="action-btn edit"
-                                            @onclick:stopPropagation="true"
-                                            @onclick='async () => await ShowToastAsync("编辑画面下一步接")'>
+                                            @onclick="() => OpenEditBill(bill)">
                                         编辑
                                     </button>
                                     <button class="action-btn delete"
@@ -276,7 +280,7 @@
     <footer class="bottom-action-bar">
         <button class="bar-btn" @onclick='async () => await ShowToastAsync("统计画面后续接")'>统计</button>
         <button class="bar-btn" @onclick="RefreshBillsAsync">刷新</button>
-        <button class="add-btn" @onclick='() => Nav.NavigateTo("/bill/add")' aria-label="添加">＋</button>
+        <button class="add-btn" @onclick="OpenAddBill" aria-label="添加">＋</button>
         <button class="bar-btn" @onclick='async () => await ShowToastAsync("筛选功能后续接")'>筛选</button>
         <button class="bar-btn" @onclick='async () => await ShowToastAsync("更多功能后续接")'>更多</button>
     </footer>
@@ -305,6 +309,14 @@
     {
         <div class="toast-box">@ToastMessage</div>
     }
+
+    @if (ShowEditor)
+    {
+        <BillEditor BillId="EditingBillId"
+                    InitialDate="InitialDateForAdd"
+                    OnSaved="HandleEditorSaved"
+                    OnCanceled="CloseEditor" />
+    }
 </div>
 
 @code {
@@ -323,6 +335,10 @@
     private enum PeriodMode { Month, Day }
     private enum SummaryPage { Expense, Income }
     private enum SwipeSide { None, Left, Right }
+
+    private bool ShowEditor = false;
+    private long? EditingBillId = null;
+    private long? HighlightedBillId = null; // 💡 记录当前需要高亮的账单 ID
 
     private sealed record BillDayGroup(DateOnly Date, List<Bill> Items, decimal Expense, decimal Income);
 
@@ -384,6 +400,8 @@
     private long YiyiRoleId = DefaultYiyiRoleId;
     private long Yiyi2RoleId = DefaultYiyi2RoleId;
     private long SharedRoleId = DefaultSharedRoleId;
+
+    private DateTime InitialDateForAdd = DateTime.Today;
 
     private string CurrentDisplayTitle =>
         CurrentMode == PeriodMode.Month
@@ -1000,5 +1018,65 @@
         ToastCts?.Dispose();
     }
 
+    private void OpenAddBill()
+    {
+        EditingBillId = null;
+        if (CurrentMode == PeriodMode.Month)
+        {
+            InitialDateForAdd = DateTime.Today; // 按月模式默认今天
+        }
+        else
+        {
+            // 将 DateOnly 转换为 DateTime 传给编辑器
+            InitialDateForAdd = FocusedDate.ToDateTime(TimeOnly.MinValue);
+        }
+        ShowEditor = true;
+    }
 
+    private void OpenEditBill(Bill bill)
+    {
+        EditingBillId = bill.Id;
+        CloseSwipeImmediate(); // 开启编辑器前，顺手把左滑菜单关掉
+        ShowEditor = true;
+    }
+
+    private void CloseEditor()
+    {
+        ShowEditor = false;
+    }
+
+    // 处理编辑器保存后的数据回传
+    private async Task HandleEditorSaved(Bill savedBill)
+    {
+        ShowEditor = false;
+
+        if (EditingBillId.HasValue && EditingBillId.Value > 0)
+        {
+            var index = BillItems.FindIndex(b => b.Id == savedBill.Id);
+            if (index >= 0) BillItems[index] = savedBill;
+        }
+        else
+        {
+            BillItems.Add(savedBill);
+        }
+
+        BillItems = BillItems.OrderByDescending(b => b.BillDate)
+                             .ThenByDescending(b => b.CreatedAt)
+                             .ToList();
+
+        // 💡 1. 瞬间高亮
+        HighlightedBillId = savedBill.Id;
+        StateHasChanged();
+
+        // 💡 2. 异步显示弹窗（不要加 await，让它在后台跑，不阻塞高亮计时）
+        _ = ShowToastAsync("保存成功");
+
+        // 💡 3. 开启高亮计时器：0.4秒亮黄，然后开始褪色
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(500); // 0.4秒足够肉眼识别了
+            HighlightedBillId = null;
+            await InvokeAsync(StateHasChanged);
+        });
+    }
 }
