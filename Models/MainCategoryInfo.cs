@@ -13,6 +13,9 @@ namespace BookkeepingBlazor.Models
         [JsonPropertyName("icon")]
         public string? Icon { get; set; }
 
+        [JsonPropertyName("type")]
+        public short Type { get; set; }
+
         [JsonPropertyName("is_deleted")]
         public bool IsDeleted { get; set; }
     }
