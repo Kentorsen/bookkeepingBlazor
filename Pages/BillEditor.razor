@@ -368,24 +368,43 @@
         CloseCatInput();
     }
 
-    // 确认删除分类 (软删除)
+    // 确认删除分类 (软删除 + 级联删除)
     private async Task DeleteCurrentCategory()
     {
         try
         {
             if (CatInputMode == 2) // 删除主类
             {
+                // 1. 软删除 DB 中的主类别
                 await Supabase.SoftDeleteMainCategoryAsync(EditingCatId);
+                
+                // 2. 软删除 DB 中关联的所有子类别 (级联删除)
+                await Supabase.SoftDeleteSubCategoriesByMainIdAsync(EditingCatId);
+
+                // 3. 同步更新内存中的主类别状态
                 var cat = MainCategories.FirstOrDefault(c => c.Id == EditingCatId);
                 if (cat != null) cat.IsDeleted = true;
-                Model.MainCategoryId = 0; // 清空选中状态
-                ShowToast("已删除主分类");
+
+                // 4. 同步更新内存中的所有子类别状态，让画面上的子分类也瞬间消失
+                var relatedSubs = SubCategories.Where(s => s.MainCategoryId == EditingCatId).ToList();
+                foreach (var sub in relatedSubs)
+                {
+                    sub.IsDeleted = true;
+                }
+
+                // 5. 清空当前表单的选中状态
+                Model.MainCategoryId = 0;
+                Model.SubCategoryId = null; // 连同子分类的选中状态一起清空
+                
+                ShowToast("已删除主分类及其子分类");
             }
             else if (CatInputMode == 4) // 删除子类
             {
                 await Supabase.SoftDeleteSubCategoryAsync(EditingCatId);
+                
                 var sub = SubCategories.FirstOrDefault(s => s.Id == EditingCatId);
                 if (sub != null) sub.IsDeleted = true;
+                
                 Model.SubCategoryId = null; // 清空选中状态
                 ShowToast("已删除子分类");
             }
