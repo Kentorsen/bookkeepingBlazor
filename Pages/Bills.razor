@@ -28,20 +28,16 @@
     @if (ShowPicker)
     {
         <div class="picker-panel">
-            @if (CurrentMode == PeriodMode.Month)
-            {
-                <input type="month"
-                       class="picker-input"
-                       value="@MonthPickerValue"
-                       @onchange="OnMonthPickerChanged" />
-            }
-            else
-            {
-                <input type="date"
-                       class="picker-input"
-                       value="@DayPickerValue"
-                       @onchange="OnDayPickerChanged" />
-            }
+            <div class="picker-input-wrapper">
+                @if (CurrentMode == PeriodMode.Month)
+                {
+                    <input type="month" class="picker-input" value="@MonthPickerValue" @onchange="OnMonthPickerChanged" />
+                }
+                else
+                {
+                    <input type="date" class="picker-input" value="@DayPickerValue" @onchange="OnDayPickerChanged" />
+                }
+            </div>
 
             <div class="picker-actions">
                 <button class="picker-btn light" @onclick="CancelPicker">取消</button>
@@ -50,7 +46,10 @@
         </div>
     }
 
-    <section class="region2">
+    <section class="region2" 
+             @onpointerdown="HandleSummaryPointerDown"
+             @onpointerup="HandleSummaryPointerUp"
+             @onpointerleave="HandleSummaryPointerLeave">
         <div class="r2-head">
             <div class="r2-dots">
                 <button class="dot @(CurrentSummaryPage == SummaryPage.Expense ? "active" : "")"
@@ -145,7 +144,8 @@
              @onpointerdown="HandleListPointerDown"
              @onpointermove="HandleListPointerMove"
              @onpointerup="HandleListPointerUp"
-             @onpointerleave="HandleListPointerLeave">
+             @onpointerleave="HandleListPointerUp" 
+             @onpointercancel="HandleListPointerUp">
 
             <div class="pull-holder" style="height:@($"{Math.Max(PullDistance, IsRefreshingList ? 46 : 0)}px")">
                 <div class="pull-text">
@@ -213,7 +213,9 @@
 
                                 <article class="bill-row"
                                          style="@GetRowTransformStyle(bill.Id)"
-                                         @onclick="() => OnBillCardClick(bill.Id)">
+                                         @onpointerdown="e => HandleRowPointerDown(bill.Id, e)"
+                                         @onpointermove="e => HandleRowPointerMove(bill.Id, e)"
+                                         @onpointerup="e => HandleRowPointerUp(bill.Id, e)">
                                     <div class="bill-main-top">
                                         <div class="bill-title">@GetTitle(bill)</div>
 
@@ -556,11 +558,16 @@
         LongPressCts = new CancellationTokenSource();
         try
         {
-            await Task.Delay(550, LongPressCts.Token);
-            CurrentMode = CurrentMode == PeriodMode.Month ? PeriodMode.Day : PeriodMode.Month;
-            IgnoreNextClick = true;
-            ShowPicker = true;
+            await Task.Delay(600, LongPressCts.Token); // 增加到600ms防止误触
+        
+            // 1. 切换模式
+            CurrentMode = (CurrentMode == PeriodMode.Month) ? PeriodMode.Day : PeriodMode.Month;
             SyncPickerValue();
+        
+            // 2. 立即刷新数据 (新增)
+            await LoadBillsAsync();
+        
+            IgnoreNextClick = true;
             StateHasChanged();
         }
         catch (TaskCanceledException) { }
@@ -652,24 +659,36 @@
         StateHasChanged();
     }
 
-    private async Task HandleListPointerUp(Microsoft.AspNetCore.Components.Web.PointerEventArgs e)
+    private async Task HandleListPointerUp(PointerEventArgs e)
     {
         if (!ListPullTracking) return;
-
         ListPullTracking = false;
-        var shouldRefresh = PullDistance >= 56;
-        PullDistance = 0;
 
-        if (shouldRefresh)
+        // 只要抬起，如果没达到刷新阈值，先设为0，防止文字卡住
+        if (PullDistance < 56)
         {
-            IsRefreshingList = true;
+            PullDistance = 0;
             StateHasChanged();
-            await RefreshBillsAsync();
-            await Task.Delay(220);
-            IsRefreshingList = false;
+            return;
         }
 
+        // 达到阈值，开始刷新
+        IsRefreshingList = true;
+        PullDistance = 46;
         StateHasChanged();
+
+        try
+        {
+            await LoadBillsAsync();
+        }
+        finally
+        {
+            // 核心：确保无论成功失败，都清空状态
+            await Task.Delay(300); // 留一点视觉缓冲
+            IsRefreshingList = false;
+            PullDistance = 0;
+            StateHasChanged();
+        }
     }
 
     private void HandleListPointerLeave(Microsoft.AspNetCore.Components.Web.PointerEventArgs e)
@@ -682,6 +701,21 @@
 
     private void HandleRowPointerDown(long billId, Microsoft.AspNetCore.Components.Web.PointerEventArgs e)
     {
+        // 修改逻辑：
+        // 1. 如果点击的是其他卡片，先关掉当前打开的
+        if (OpenBillId.HasValue && OpenBillId != billId)
+        {
+            CloseSwipeImmediate();
+        }
+        // 2. 如果点击的就是当前已打开的卡片，直接收回
+        else if (OpenBillId.HasValue && OpenBillId == billId)
+        {
+            CloseSwipeImmediate();
+            return; // 直接返回，不再处理本次拖拽
+        }
+
+        DragBillId = billId;
+
         DragBillId = billId;
         DragStartX = e.ClientX;
         DragStartY = e.ClientY;
@@ -796,21 +830,25 @@
 
     private void OnBillCardClick(long billId)
     {
-        if (OpenBillId == billId && DragBillId is null)
+        // 如果当前有打开的卡片，且点击的就是它，或者点击了别的
+        if (OpenBillId.HasValue)
         {
-            CloseSwipeImmediate();
-            StateHasChanged();
+            CloseSwipeImmediate(); // 先平滑关闭所有
+            return; // 直接返回，不执行其他逻辑
         }
+    
+        // 执行正常的点击逻辑 (比如打开详情)
+        // await ShowToastAsync("查看详情");
     }
 
     private void CloseSwipeImmediate()
     {
         OpenBillId = null;
-        OpenSwipeSide = SwipeSide.None;
         DragBillId = null;
         DragCurrentOffset = 0;
         DragBaseOffset = 0;
-        DragIsHorizontal = false;
+        OpenSwipeSide = SwipeSide.None;
+        StateHasChanged();
     }
 
     private void OpenMarkSheet(Bill bill)
