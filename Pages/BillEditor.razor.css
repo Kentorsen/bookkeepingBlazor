@@ -247,6 +247,7 @@
     color: #4b5770;
 }
 
+/* 1. 基础公共样式：增加 padding: 0 强行扒掉默认边距 */
 .row-input {
     border: none;
     text-align: right;
@@ -255,8 +256,33 @@
     font-weight: 700;
     background: transparent;
     outline: none;
-    width: 60%; /* 防止文字过长顶到左边 */
+    padding: 0; /* 🥇 关键：清除所有输入框自带的内边距 */
 }
+
+    .row-input::placeholder {
+        color: #a1aabf;
+    }
+
+/* 2. 文本框保持弹性 */
+input[type="text"].row-input {
+    flex: 1;
+    margin-left: 16px;
+}
+
+/* 3. 日期框：清除右侧边距，并提供微调接口 */
+input[type="date"].row-input {
+    width: auto;
+    flex: 0 0 auto;
+    padding-right: 0;
+    margin-right: -7px;
+}
+
+    /* 4. 终极保险 */
+    input[type="date"].row-input::-webkit-datetime-edit {
+        display: flex;
+        justify-content: flex-end;
+        padding: 0; /* 连它影子 DOM 里的内边距也一起干掉 */
+    }
 
     .row-input::placeholder {
         color: #a1aabf;
