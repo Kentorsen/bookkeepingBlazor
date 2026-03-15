@@ -416,6 +416,18 @@
 
     protected override async Task OnInitializedAsync()
     {
+        // 💡 1. 刚进页面，先解析有没有 Token
+        await Supabase.CheckHandleAuthTokenAsync();
+        
+        // 💡 2. 检查是否登录成功
+        bool isLoggedIn = await Supabase.IsLoggedInAsync();
+        if (!isLoggedIn)
+        {
+            // 没登录？一脚踢去登录页！
+            Nav.NavigateTo("/login");
+            return;
+        }
+
         SyncPickerValue();
         await LoadReferenceDataAsync();
         await LoadBillsAsync();

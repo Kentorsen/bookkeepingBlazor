@@ -30,6 +30,16 @@
         <a class="dismiss">🗙</a>
     </div>
     <script src="_framework/blazor.webassembly.js"></script>
+
+    <script>
+        window.authHelper = {
+            getHashValue: function () { return window.location.hash; },
+            clearHash: function () { history.replaceState(null, "", window.location.pathname + window.location.search); },
+            setItem: (key, value) => localStorage.setItem(key, value),
+            getItem: (key) => localStorage.getItem(key),
+            removeItem: (key) => localStorage.removeItem(key)
+        };
+    </script>
 </body>
 
 </html>
