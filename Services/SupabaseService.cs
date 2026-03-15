@@ -1,6 +1,7 @@
 ﻿using BookkeepingBlazor.Models;
 using BookkeepingBlazor.Pages;
 using System.Net.Http.Headers;
+using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 
@@ -8,14 +9,26 @@ namespace BookkeepingBlazor.Services
 {
     public class SupabaseService
     {
-        private const string SupabaseUrl = "https://wklbdlsjgbqfalrfomfe.supabase.co";
-        private const string SupabaseAnonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndrbGJkbHNqZ2JxZmFscmZvbWZlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIzNTUyODMsImV4cCI6MjA4NzkzMTI4M30.YvWTV6Ed1xKj0-u5czeVhiKrIO2anKlFQ4Uh4BKIBSE";
+        //private const string SupabaseUrl = "https://wklbdlsjgbqfalrfomfe.supabase.co";
+        //private const string SupabaseAnonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndrbGJkbHNqZ2JxZmFscmZvbWZlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIzNTUyODMsImV4cCI6MjA4NzkzMTI4M30.YvWTV6Ed1xKj0-u5czeVhiKrIO2anKlFQ4Uh4BKIBSE";
 
+        //private readonly HttpClient _http;
+
+        //public SupabaseService(HttpClient http)
+        //{
+        //    _http = http;
+        //}
+
+        private readonly string SupabaseUrl;
+        private readonly string SupabaseAnonKey;
         private readonly HttpClient _http;
 
-        public SupabaseService(HttpClient http)
+        public SupabaseService(HttpClient http, IConfiguration config)
         {
             _http = http;
+            // 💡 自动根据当前环境读取对应的配置
+            SupabaseUrl = config["Supabase:Url"];
+            SupabaseAnonKey = config["Supabase:Key"];
         }
 
         private void ApplyAuthHeaders(HttpRequestMessage request)
