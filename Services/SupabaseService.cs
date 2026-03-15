@@ -126,5 +126,18 @@ namespace BookkeepingBlazor.Services
                     updated_at = DateTime.UtcNow
                 });
         }
+
+        public async Task InsertBillAsync(Bill newBill)
+        {
+            var json = JsonSerializer.Serialize(newBill);
+            var request = new HttpRequestMessage(HttpMethod.Post, $"{SupabaseUrl}/rest/v1/bills");
+
+            ApplyAuthHeaders(request);
+            request.Headers.Add("Prefer", "return=minimal");
+            request.Content = new StringContent(json, Encoding.UTF8, "application/json");
+
+            var response = await _http.SendAsync(request);
+            response.EnsureSuccessStatusCode();
+        }
     }
 }

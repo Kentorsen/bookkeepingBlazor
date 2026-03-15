@@ -4,6 +4,7 @@
 @using BookkeepingBlazor.Services
 @inject SupabaseService Supabase
 @inject IJSRuntime JS
+@inject NavigationManager Nav
 @implements IDisposable
 
 <div class="bill-app">
@@ -275,7 +276,7 @@
     <footer class="bottom-action-bar">
         <button class="bar-btn" @onclick='async () => await ShowToastAsync("统计画面后续接")'>统计</button>
         <button class="bar-btn" @onclick="RefreshBillsAsync">刷新</button>
-        <button class="add-btn" @onclick='async () => await ShowToastAsync("新增画面下一步接")' aria-label="添加">＋</button>
+        <button class="add-btn" @onclick='() => Nav.NavigateTo("/bill/add")' aria-label="添加">＋</button>
         <button class="bar-btn" @onclick='async () => await ShowToastAsync("筛选功能后续接")'>筛选</button>
         <button class="bar-btn" @onclick='async () => await ShowToastAsync("更多功能后续接")'>更多</button>
     </footer>
@@ -998,4 +999,6 @@
         ToastCts?.Cancel();
         ToastCts?.Dispose();
     }
+
+
 }
