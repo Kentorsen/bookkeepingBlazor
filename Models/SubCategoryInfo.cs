@@ -5,6 +5,7 @@ namespace BookkeepingBlazor.Models
     public class SubCategoryInfo
     {
         [JsonPropertyName("id")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
         public long Id { get; set; }
 
         [JsonPropertyName("main_category_id")]

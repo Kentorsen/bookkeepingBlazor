@@ -139,5 +139,85 @@ namespace BookkeepingBlazor.Services
             var response = await _http.SendAsync(request);
             response.EnsureSuccessStatusCode();
         }
+
+        // ================= 核心：带有返回值的 POST 请求 =================
+        // 用于在插入数据后，要求 Supabase 直接返回插入成功的数据（包含自动生成的 ID）
+        private async Task<T?> PostAndReturnAsync<T>(string relativeUrl, object payload)
+        {
+            var json = JsonSerializer.Serialize(payload);
+            var request = new HttpRequestMessage(HttpMethod.Post, $"{SupabaseUrl}/rest/v1/{relativeUrl}");
+
+            ApplyAuthHeaders(request);
+            // 关键点：要求 Supabase 返回插入的数据表现 (Representation)
+            request.Headers.Add("Prefer", "return=representation");
+            request.Content = new StringContent(json, Encoding.UTF8, "application/json");
+
+            var response = await _http.SendAsync(request);
+            response.EnsureSuccessStatusCode();
+
+            var responseJson = await response.Content.ReadAsStringAsync();
+            var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+
+            // Supabase 即使是单条插入，默认也会返回一个数组
+            var resultList = JsonSerializer.Deserialize<List<T>>(responseJson, options);
+            return resultList != null && resultList.Count > 0 ? resultList[0] : default;
+        }
+
+        // ================= 分类增删改接口 =================
+
+        // --- 主类别 ---
+        public Task<MainCategoryInfo?> InsertMainCategoryAsync(MainCategoryInfo cat)
+        {
+            // 使用匿名对象防止传递 ID=0 干扰自增
+            return PostAndReturnAsync<MainCategoryInfo>("main_categories", new
+            {
+                name = cat.Name,
+                type = cat.Type, // 你已经加过这个字段了
+                is_deleted = false
+            });
+        }
+
+        // --- 主类别 ---
+        public Task UpdateMainCategoryAsync(long id, string newName)
+        {
+            // 删除了 updated_at 字段
+            return PatchAsync($"main_categories?id=eq.{id}", new { name = newName });
+        }
+
+        public Task SoftDeleteMainCategoryAsync(long id)
+        {
+            // 删除了 updated_at 字段
+            return PatchAsync($"main_categories?id=eq.{id}", new { is_deleted = true });
+        }
+
+        // --- 子类别 ---
+        public Task<SubCategoryInfo?> InsertSubCategoryAsync(SubCategoryInfo cat)
+        {
+            return PostAndReturnAsync<SubCategoryInfo>("sub_categories", new
+            {
+                main_category_id = cat.MainCategoryId,
+                name = cat.Name,
+                is_deleted = false
+            });
+        }
+
+        // --- 子类别 ---
+        public Task UpdateSubCategoryAsync(long id, string newName)
+        {
+            // 删除了 updated_at 字段
+            return PatchAsync($"sub_categories?id=eq.{id}", new { name = newName });
+        }
+
+        public Task SoftDeleteSubCategoryAsync(long id)
+        {
+            // 删除了 updated_at 字段
+            return PatchAsync($"sub_categories?id=eq.{id}", new { is_deleted = true });
+        }
+
+        public Task SoftDeleteSubCategoriesByMainIdAsync(long mainCategoryId)
+        {
+            // 利用 Supabase (PostgREST) 的特性，直接根据 main_category_id 批量更新
+            return PatchAsync($"sub_categories?main_category_id=eq.{mainCategoryId}", new { is_deleted = true });
+        }
     }
 }

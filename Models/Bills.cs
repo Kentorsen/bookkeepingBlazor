@@ -6,6 +6,7 @@ namespace BookkeepingBlazor.Models
     public class Bill
     {
         [JsonPropertyName("id")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
         public long Id { get; set; }
 
         [JsonPropertyName("io_type")]
