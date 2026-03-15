@@ -221,36 +221,42 @@ namespace BookkeepingBlazor.Services
                 "sub_categories?select=*&order=id.asc");
         }
 
-        public Task MarkBillAsync(long billId, long markedPayerRoleId)
+        // 💡 增加 updatedBy 参数
+        public Task MarkBillAsync(long billId, long markedPayerRoleId, long updatedBy)
         {
             return PatchAsync(
                 $"bills?id=eq.{billId}",
                 new
                 {
                     marked_payer_role_id = markedPayerRoleId,
-                    updated_at = DateTime.UtcNow
+                    updated_at = DateTime.UtcNow,
+                    updated_by = updatedBy // 👈 传给数据库
                 });
         }
 
-        public Task ClearBillMarkAsync(long billId)
+        // 💡 增加 updatedBy 参数
+        public Task ClearBillMarkAsync(long billId, long updatedBy)
         {
             return PatchAsync(
                 $"bills?id=eq.{billId}",
                 new
                 {
                     marked_payer_role_id = 0,
-                    updated_at = DateTime.UtcNow
+                    updated_at = DateTime.UtcNow,
+                    updated_by = updatedBy // 👈 传给数据库
                 });
         }
 
-        public Task SoftDeleteBillAsync(long billId)
+        // 💡 增加 updatedBy 参数
+        public Task SoftDeleteBillAsync(long billId, long updatedBy)
         {
             return PatchAsync(
                 $"bills?id=eq.{billId}",
                 new
                 {
                     is_deleted = true,
-                    updated_at = DateTime.UtcNow
+                    updated_at = DateTime.UtcNow,
+                    updated_by = updatedBy // 👈 虽然删除了，但也记录是谁删的
                 });
         }
 
@@ -363,7 +369,8 @@ namespace BookkeepingBlazor.Services
                 bill_date = bill.BillDate?.ToString("yyyy-MM-dd"), // 日期转字符串
                 is_extra = bill.IsExtra,
                 marked_payer_role_id = bill.MarkedPayerRoleId,
-                updated_at = DateTime.UtcNow
+                updated_at = DateTime.UtcNow,
+                updated_by = bill.UpdatedBy
             });
         }
     }
