@@ -39,10 +39,10 @@
             </div>
             
             <div class="category-grid">
-                @foreach (var cat in MainCategories)
+                @foreach (var cat in MainCategories.Where(c => c.Type == Model.IoType))
                 {
                     <button class="chip @(Model.MainCategoryId == cat.Id ? "active" : "")"
-                            @onclick="() => SelectMainCategory(cat.Id)">
+                            @onclick="() => SelectMainCategory(cat.Id)" title="@cat.Name">
                         @cat.Name
                     </button>
                 }
@@ -54,7 +54,7 @@
                     @foreach (var sub in SubCategories.Where(x => x.MainCategoryId == Model.MainCategoryId))
                     {
                         <button class="chip sub @(Model.SubCategoryId == sub.Id ? "active" : "")"
-                                @onclick="() => SelectSubCategory(sub.Id)">
+                                @onclick="() => SelectSubCategory(sub.Id)" title="@sub.Name">
                             @sub.Name
                         </button>
                     }
@@ -67,10 +67,19 @@
                 <label>日期</label>
                 <input type="date" class="row-input" @bind="Model.BillDate" @bind:format="yyyy-MM-dd" />
             </div>
-            <div class="form-row">
-                <label>名称</label>
-                <input type="text" class="row-input" placeholder="输入账单名称(选填)" @bind="Model.Title" />
+            
+            <div class="form-row column-layout">
+                <div class="name-input-row">
+                    <label>名称</label>
+                    <input type="text" class="row-input" placeholder="输入账单名称" @bind="Model.Title" />
+                </div>
+                <div class="quick-fill-tags">
+                    <span class="q-tag" @onclick="() => FillName(1)">填主类</span>
+                    <span class="q-tag" @onclick="() => FillName(2)">填子类</span>
+                    <span class="q-tag" @onclick="() => FillName(3)">主类 + 子类</span>
+                </div>
             </div>
+
             <div class="form-row">
                 <label>额外</label>
                 <label class="toggle-switch">
@@ -84,7 +93,7 @@
             <div class="form-row column-layout">
                 <label>所属方</label>
                 <div class="chip-row">
-                    @foreach (var role in Roles.Where(r => r.RoleType != "pet"))
+                    @foreach (var role in Roles)
                     {
                         <button class="chip small @(Model.OwnerRoleId == role.Id ? "active" : "")"
                                 @onclick="() => Model.OwnerRoleId = role.Id">
@@ -100,7 +109,7 @@
                     @foreach (var role in Roles.Where(r => r.RoleType != "pet"))
                     {
                         <button class="chip small @(Model.PayerRoleId == role.Id ? "active" : "")"
-                                @onclick="() => Model.PayerRoleId = role.Id">
+                                @onclick="() => SetPayer(role.Id)">
                             @role.Name
                         </button>
                     }
@@ -108,13 +117,14 @@
             </div>
 
             <div class="form-row column-layout">
-                <label>标记 (可选)</label>
+                <label>标记</label>
                 <div class="chip-row">
                     <button class="chip small @(Model.MarkedPayerRoleId == 0 ? "active" : "")"
                             @onclick="() => Model.MarkedPayerRoleId = 0">
                         无
                     </button>
-                    @foreach (var role in Roles.Where(r => r.RoleType != "pet"))
+                    
+                    @foreach (var role in Roles.Where(r => r.RoleType != "pet" && r.Id != Model.PayerRoleId))
                     {
                         <button class="chip small @(Model.MarkedPayerRoleId == role.Id ? "active" : "")"
                                 @onclick="() => Model.MarkedPayerRoleId = role.Id">
@@ -137,24 +147,21 @@
     private List<RoleInfo> Roles = new();
     private List<MainCategoryInfo> MainCategories = new();
     private List<SubCategoryInfo> SubCategories = new();
-
+    
     private bool ShowToastFlag;
     private string ToastMessage = "";
 
     protected override async Task OnInitializedAsync()
     {
-        // 加载基础数据
         Roles = await Supabase.GetRolesAsync();
         MainCategories = await Supabase.GetMainCategoriesAsync();
         SubCategories = await Supabase.GetSubCategoriesAsync();
 
-        // 设定默认值
-        Model.IoType = 1; // 默认支出
-        Model.IsExtra = false; // 默认非额外
-        Model.BillDate = DateTime.Today; // 默认今天
-        Model.MarkedPayerRoleId = 0; // 默认无标记
+        Model.IoType = 1;
+        Model.IsExtra = false;
+        Model.BillDate = DateTime.Today;
+        Model.MarkedPayerRoleId = 0;
 
-        // 尝试找到“共同”的 RoleId (假设你的数据里“共同”对应的 RoleType 是 group)
         var sharedRole = Roles.FirstOrDefault(r => r.RoleType == "group") ?? Roles.FirstOrDefault();
         if (sharedRole != null)
         {
@@ -166,7 +173,6 @@
     private void SetIoType(short type)
     {
         Model.IoType = type;
-        // 切换收支时，可以清空分类，让用户重选
         Model.MainCategoryId = 0;
         Model.SubCategoryId = null;
     }
@@ -174,25 +180,100 @@
     private void SelectMainCategory(long id)
     {
         Model.MainCategoryId = id;
-        Model.SubCategoryId = null; // 切换主分类时清空子分类
+        Model.SubCategoryId = null;
     }
 
     private void SelectSubCategory(long id) => Model.SubCategoryId = id;
 
-    private async Task SaveBillAsync()
+    private void SetPayer(long roleId)
     {
-        if (Model.Amount <= 0)
+        Model.PayerRoleId = roleId;
+        if (Model.MarkedPayerRoleId == roleId)
         {
-            ShowToast("请输入有效金额");
-            return;
+            Model.MarkedPayerRoleId = 0;
         }
+    }
+
+    // 快捷填充名称的方法
+    private void FillName(int mode)
+    {
         if (Model.MainCategoryId == 0)
         {
-            ShowToast("请选择分类");
+            ShowToast("请先选择分类");
             return;
         }
 
-        // 补全审计字段 (假设当前操作人是一一，Id=1，实际应从登录状态获取)
+        var mainName = MainCategories.FirstOrDefault(c => c.Id == Model.MainCategoryId)?.Name ?? "";
+        var subName = SubCategories.FirstOrDefault(c => c.Id == Model.SubCategoryId)?.Name ?? "";
+
+        if (mode == 1)
+        {
+            Model.Title = mainName;
+        }
+        else if (mode == 2)
+        {
+            if (string.IsNullOrEmpty(subName)) ShowToast("当前未选择子类别");
+            else Model.Title = subName;
+        }
+        else if (mode == 3)
+        {
+            if (string.IsNullOrEmpty(subName)) Model.Title = mainName;
+            else Model.Title = $"{mainName} {subName}"; // 中间加半角空格
+        }
+    }
+
+    private async Task SaveBillAsync()
+    {
+        // 1. 金额校验 (不能为 0)
+        if (Model.Amount == 0)
+        {
+            ShowToast("金额不能为 0");
+            return;
+        }
+
+        // 2. 主类别校验
+        if (Model.MainCategoryId == 0)
+        {
+            ShowToast("请选择主类别");
+            return;
+        }
+
+        // 3. 日期校验
+        if (Model.BillDate == null || Model.BillDate == default(DateTime))
+        {
+            ShowToast("日期不能为空");
+            return;
+        }
+
+        // 4. 名称校验
+        if (string.IsNullOrWhiteSpace(Model.Title))
+        {
+            ShowToast("名称不能为空");
+            return;
+        }
+
+        // 5. 所属方校验
+        if (Model.OwnerRoleId == 0)
+        {
+            ShowToast("请选择所属方");
+            return;
+        }
+
+        // 6. 付款方校验
+        if (Model.PayerRoleId == 0)
+        {
+            ShowToast("请选择付款方/收款方");
+            return;
+        }
+
+        // 7. 标记合法性校验（虽然 UI 限定了不能乱填，但防御性检查，且 0 是合法的“无”）
+        if (Model.MarkedPayerRoleId < 0)
+        {
+            ShowToast("标记信息有误");
+            return;
+        }
+
+        // 设置审计字段默认值，写死 id = 1
         Model.CreatedAt = DateTime.UtcNow;
         Model.CreatedBy = 1;
         Model.UpdatedAt = DateTime.UtcNow;
@@ -202,7 +283,7 @@
         try
         {
             await Supabase.InsertBillAsync(Model);
-            Nav.NavigateTo("/bills"); // 保存成功后返回主页
+            Nav.NavigateTo("/bills");
         }
         catch (Exception ex)
         {
