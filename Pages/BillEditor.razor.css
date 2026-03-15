@@ -6,6 +6,7 @@
     background: #f6f7f9;
     color: #1f2430;
     overflow: hidden;
+    position: relative;
 }
 
 .editor-header {
@@ -72,7 +73,6 @@
     box-shadow: 0 2px 10px rgba(0,0,0,.03);
 }
 
-/* 区域1：金额区进一步弱化 */
 .amount-section {
     padding: 8px 16px;
     text-align: center;
@@ -94,15 +94,15 @@
     }
 
 .currency {
-    font-size: 20px; /* 弱化符号 */
+    font-size: 20px;
     font-weight: 600;
 }
 
 .amount-input {
     border: none;
     background: transparent;
-    font-size: 28px; /* 缩小字号，让它看起来不那么突兀 */
-    font-weight: 700; /* 减小字重 */
+    font-size: 28px;
+    font-weight: 700;
     width: 100%;
     text-align: left;
     color: inherit;
@@ -116,7 +116,7 @@
 .section-header {
     display: flex;
     justify-content: space-between;
-    align-items: center;
+    align-items: baseline;
     margin-bottom: 12px;
 }
 
@@ -126,12 +126,10 @@
     color: #27314a;
 }
 
-.edit-text-btn {
-    border: none;
-    background: transparent;
-    color: #84a4ff;
-    font-size: 12px;
-    font-weight: 700;
+.hint-text {
+    font-size: 11px;
+    color: #a1aabf;
+    font-weight: 600;
 }
 
 .category-grid, .sub-category-grid {
@@ -172,6 +170,19 @@
         background: #84a4ff;
     }
 
+    /* 添加按钮的特殊样式（虚线框） */
+    .chip.chip-add {
+        background: transparent;
+        border: 1px dashed #d7dce7;
+        color: #8a93a7;
+        font-weight: 700;
+    }
+
+    .chip.sub.chip-add {
+        border-color: #b9c7e8;
+        color: #84a4ff;
+    }
+
 .chip-row {
     display: flex;
     flex-wrap: wrap;
@@ -210,7 +221,6 @@
         gap: 12px;
     }
 
-/* 名称行的特殊布局 */
 .name-input-row {
     display: flex;
     justify-content: space-between;
@@ -218,12 +228,11 @@
     width: 100%;
 }
 
-/* 快捷填充标签区 */
 .quick-fill-tags {
     display: flex;
     gap: 8px;
     width: 100%;
-    justify-content: flex-end; /* 靠右对齐 */
+    justify-content: flex-end;
 }
 
 .q-tag {
@@ -247,7 +256,6 @@
     color: #4b5770;
 }
 
-/* 1. 基础公共样式：增加 padding: 0 强行扒掉默认边距 */
 .row-input {
     border: none;
     text-align: right;
@@ -256,36 +264,28 @@
     font-weight: 700;
     background: transparent;
     outline: none;
-    padding: 0; /* 🥇 关键：清除所有输入框自带的内边距 */
+    padding: 0;
 }
 
     .row-input::placeholder {
         color: #a1aabf;
     }
 
-/* 2. 文本框保持弹性 */
 input[type="text"].row-input {
     flex: 1;
     margin-left: 16px;
 }
 
-/* 3. 日期框：清除右侧边距，并提供微调接口 */
 input[type="date"].row-input {
     width: auto;
     flex: 0 0 auto;
     padding-right: 0;
-    margin-right: -7px;
 }
 
-    /* 4. 终极保险 */
     input[type="date"].row-input::-webkit-datetime-edit {
         display: flex;
         justify-content: flex-end;
-        padding: 0; /* 连它影子 DOM 里的内边距也一起干掉 */
-    }
-
-    .row-input::placeholder {
-        color: #a1aabf;
+        padding: 0;
     }
 
 .toggle-switch {
@@ -333,6 +333,87 @@ input:checked + .slider {
         transform: translateX(20px);
     }
 
+
+/* ================= 迷你输入弹窗 ================= */
+.dialog-mask {
+    position: absolute;
+    inset: 0;
+    background: rgba(18, 23, 35, 0.4);
+    z-index: 90;
+    backdrop-filter: blur(2px);
+}
+
+.input-dialog {
+    position: absolute;
+    top: 35%;
+    left: 10%;
+    right: 10%;
+    background: #fff;
+    border-radius: 16px;
+    padding: 20px;
+    z-index: 91;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+}
+
+.dialog-title {
+    font-size: 16px;
+    font-weight: 800;
+    color: #27314a;
+    text-align: center;
+    margin-bottom: 16px;
+}
+
+.dialog-input {
+    width: 100%;
+    box-sizing: border-box;
+    background: #f3f5f8;
+    border: 1px solid #e8e8ee;
+    padding: 12px 16px;
+    border-radius: 10px;
+    font-size: 14px;
+    color: #1f2940;
+    outline: none;
+    margin-bottom: 20px;
+}
+
+    .dialog-input:focus {
+        border-color: #84a4ff;
+        background: #fff;
+    }
+
+/* 弹窗底部按钮排版：如果有三个按钮(含删除)，按比例分配 */
+.dialog-footer {
+    display: flex;
+    gap: 12px;
+}
+
+    .dialog-footer.has-delete .dialog-btn {
+        flex: 1;
+    }
+
+.dialog-btn {
+    flex: 1;
+    padding: 10px 0;
+    border: none;
+    border-radius: 10px;
+    font-size: 14px;
+    font-weight: 700;
+    background: #eef1f5;
+    color: #5f687d;
+}
+
+    .dialog-btn.primary {
+        background: #ef9cb8;
+        color: #fff;
+    }
+
+    .dialog-btn.danger {
+        background: #ffe3e8;
+        color: #ee667f;
+    }
+
+
+/* ================= Toast 提示 ================= */
 .toast-box {
     position: absolute;
     left: 50%;

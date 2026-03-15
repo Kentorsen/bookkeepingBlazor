@@ -35,29 +35,31 @@
         <section class="form-section">
             <div class="section-header">
                 <div class="section-title">分类</div>
-                <button class="edit-text-btn" @onclick='() => ShowToast("分类编辑功能开发中...")'>编辑分类</button>
+                <div class="hint-text">💡 再次点击已选中的分类即可编辑</div>
             </div>
             
             <div class="category-grid">
-                @foreach (var cat in MainCategories.Where(c => c.Type == Model.IoType))
+                @foreach (var cat in MainCategories.Where(c => c.Type == Model.IoType && !c.IsDeleted))
                 {
                     <button class="chip @(Model.MainCategoryId == cat.Id ? "active" : "")"
-                            @onclick="() => SelectMainCategory(cat.Id)" title="@cat.Name">
+                            @onclick="() => HandleMainCategoryClick(cat.Id)" title="@cat.Name">
                         @cat.Name
                     </button>
                 }
+                <button class="chip chip-add" @onclick="OpenAddMainCategory">+ 添加</button>
             </div>
 
-            @if (Model.MainCategoryId > 0 && SubCategories.Any(x => x.MainCategoryId == Model.MainCategoryId))
+            @if (Model.MainCategoryId > 0)
             {
                 <div class="sub-category-grid">
-                    @foreach (var sub in SubCategories.Where(x => x.MainCategoryId == Model.MainCategoryId))
+                    @foreach (var sub in SubCategories.Where(x => x.MainCategoryId == Model.MainCategoryId && !x.IsDeleted))
                     {
                         <button class="chip sub @(Model.SubCategoryId == sub.Id ? "active" : "")"
-                                @onclick="() => SelectSubCategory(sub.Id)" title="@sub.Name">
+                                @onclick="() => HandleSubCategoryClick(sub.Id)" title="@sub.Name">
                             @sub.Name
                         </button>
                     }
+                    <button class="chip sub chip-add" @onclick="() => OpenAddSubCategory(Model.MainCategoryId)">+ 添加</button>
                 </div>
             }
         </section>
@@ -136,6 +138,24 @@
         </section>
     </div>
 
+    @if (ShowCatInputDialog)
+    {
+        <div class="dialog-mask" @onclick="CloseCatInput"></div>
+        <div class="input-dialog">
+            <div class="dialog-title">@CatInputTitle</div>
+            <input type="text" class="dialog-input" placeholder="请输入名称" @bind="CatInputName" />
+            
+            <div class="dialog-footer @(CatInputMode == 2 || CatInputMode == 4 ? "has-delete" : "")">
+                @if (CatInputMode == 2 || CatInputMode == 4)
+                {
+                    <button class="dialog-btn danger" @onclick="DeleteCurrentCategory">删除</button>
+                }
+                <button class="dialog-btn" @onclick="CloseCatInput">取消</button>
+                <button class="dialog-btn primary" @onclick="ConfirmCatInput">确定</button>
+            </div>
+        </div>
+    }
+
     @if (ShowToastFlag)
     {
         <div class="toast-box">@ToastMessage</div>
@@ -150,6 +170,14 @@
     
     private bool ShowToastFlag;
     private string ToastMessage = "";
+
+    // --- 分类管理状态 ---
+    private bool ShowCatInputDialog = false;
+    private string CatInputName = "";
+    private string CatInputTitle = "";
+    private int CatInputMode = 0; // 1:新主, 2:改主, 3:新子, 4:改子
+    private long EditingCatId = 0;
+    private long TargetMainCatId = 0;
 
     protected override async Task OnInitializedAsync()
     {
@@ -177,39 +205,48 @@
         Model.SubCategoryId = null;
     }
 
-    private void SelectMainCategory(long id)
+    // ========== 双击/单击响应逻辑 ==========
+    private void HandleMainCategoryClick(long id)
     {
-        Model.MainCategoryId = id;
-        Model.SubCategoryId = null;
+        if (Model.MainCategoryId == id)
+        {
+            var cat = MainCategories.FirstOrDefault(c => c.Id == id);
+            if (cat != null) OpenEditMainCategory(cat);
+        }
+        else
+        {
+            Model.MainCategoryId = id;
+            Model.SubCategoryId = null;
+        }
     }
 
-    private void SelectSubCategory(long id) => Model.SubCategoryId = id;
+    private void HandleSubCategoryClick(long id)
+    {
+        if (Model.SubCategoryId == id)
+        {
+            var sub = SubCategories.FirstOrDefault(s => s.Id == id);
+            if (sub != null) OpenEditSubCategory(sub);
+        }
+        else
+        {
+            Model.SubCategoryId = id;
+        }
+    }
+    // ===============================================
 
     private void SetPayer(long roleId)
     {
         Model.PayerRoleId = roleId;
-        if (Model.MarkedPayerRoleId == roleId)
-        {
-            Model.MarkedPayerRoleId = 0;
-        }
+        if (Model.MarkedPayerRoleId == roleId) Model.MarkedPayerRoleId = 0;
     }
 
-    // 快捷填充名称的方法
     private void FillName(int mode)
     {
-        if (Model.MainCategoryId == 0)
-        {
-            ShowToast("请先选择分类");
-            return;
-        }
-
+        if (Model.MainCategoryId == 0) { ShowToast("请先选择分类"); return; }
         var mainName = MainCategories.FirstOrDefault(c => c.Id == Model.MainCategoryId)?.Name ?? "";
         var subName = SubCategories.FirstOrDefault(c => c.Id == Model.SubCategoryId)?.Name ?? "";
 
-        if (mode == 1)
-        {
-            Model.Title = mainName;
-        }
+        if (mode == 1) Model.Title = mainName;
         else if (mode == 2)
         {
             if (string.IsNullOrEmpty(subName)) ShowToast("当前未选择子类别");
@@ -218,62 +255,20 @@
         else if (mode == 3)
         {
             if (string.IsNullOrEmpty(subName)) Model.Title = mainName;
-            else Model.Title = $"{mainName} {subName}"; // 中间加半角空格
+            else Model.Title = $"{mainName} {subName}";
         }
     }
 
     private async Task SaveBillAsync()
     {
-        // 1. 金额校验 (不能为 0)
-        if (Model.Amount == 0)
-        {
-            ShowToast("金额不能为 0");
-            return;
-        }
+        if (Model.Amount == 0) { ShowToast("金额不能为 0"); return; }
+        if (Model.MainCategoryId == 0) { ShowToast("请选择主类别"); return; }
+        if (Model.BillDate == null || Model.BillDate == default(DateTime)) { ShowToast("日期不能为空"); return; }
+        if (string.IsNullOrWhiteSpace(Model.Title)) { ShowToast("名称不能为空"); return; }
+        if (Model.OwnerRoleId == 0) { ShowToast("请选择所属方"); return; }
+        if (Model.PayerRoleId == 0) { ShowToast("请选择付款方/收款方"); return; }
+        if (Model.MarkedPayerRoleId < 0) { ShowToast("标记信息有误"); return; }
 
-        // 2. 主类别校验
-        if (Model.MainCategoryId == 0)
-        {
-            ShowToast("请选择主类别");
-            return;
-        }
-
-        // 3. 日期校验
-        if (Model.BillDate == null || Model.BillDate == default(DateTime))
-        {
-            ShowToast("日期不能为空");
-            return;
-        }
-
-        // 4. 名称校验
-        if (string.IsNullOrWhiteSpace(Model.Title))
-        {
-            ShowToast("名称不能为空");
-            return;
-        }
-
-        // 5. 所属方校验
-        if (Model.OwnerRoleId == 0)
-        {
-            ShowToast("请选择所属方");
-            return;
-        }
-
-        // 6. 付款方校验
-        if (Model.PayerRoleId == 0)
-        {
-            ShowToast("请选择付款方/收款方");
-            return;
-        }
-
-        // 7. 标记合法性校验（虽然 UI 限定了不能乱填，但防御性检查，且 0 是合法的“无”）
-        if (Model.MarkedPayerRoleId < 0)
-        {
-            ShowToast("标记信息有误");
-            return;
-        }
-
-        // 设置审计字段默认值，写死 id = 1
         Model.CreatedAt = DateTime.UtcNow;
         Model.CreatedBy = 1;
         Model.UpdatedAt = DateTime.UtcNow;
@@ -301,5 +296,105 @@
         await Task.Delay(2000);
         ShowToastFlag = false;
         StateHasChanged();
+    }
+
+    // ================= 分类增删改逻辑 (真实对接DB) =================
+    private void OpenAddMainCategory()
+    {
+        CatInputMode = 1; CatInputTitle = "新增主分类"; CatInputName = ""; ShowCatInputDialog = true;
+    }
+    private void OpenEditMainCategory(MainCategoryInfo cat)
+    {
+        CatInputMode = 2; CatInputTitle = "编辑主分类"; CatInputName = cat.Name ?? ""; EditingCatId = cat.Id; ShowCatInputDialog = true;
+    }
+    private void OpenAddSubCategory(long mainCatId)
+    {
+        CatInputMode = 3; CatInputTitle = "新增子分类"; CatInputName = ""; TargetMainCatId = mainCatId; ShowCatInputDialog = true;
+    }
+    private void OpenEditSubCategory(SubCategoryInfo sub)
+    {
+        CatInputMode = 4; CatInputTitle = "编辑子分类"; CatInputName = sub.Name ?? ""; EditingCatId = sub.Id; ShowCatInputDialog = true;
+    }
+    private void CloseCatInput() => ShowCatInputDialog = false;
+
+    // 确认保存分类 (新增/修改)
+    private async Task ConfirmCatInput()
+    {
+        if (string.IsNullOrWhiteSpace(CatInputName)) { ShowToast("名称不能为空"); return; }
+
+        try
+        {
+            if (CatInputMode == 1)
+            {
+                var newCat = await Supabase.InsertMainCategoryAsync(new MainCategoryInfo { Name = CatInputName, Type = Model.IoType });
+                if (newCat != null)
+                {
+                    MainCategories.Add(newCat);
+                    Model.MainCategoryId = newCat.Id; // 新增后自动选中
+                    ShowToast("已新增主分类");
+                }
+            }
+            else if (CatInputMode == 2)
+            {
+                await Supabase.UpdateMainCategoryAsync(EditingCatId, CatInputName);
+                // 同步更新本地内存，不用重新刷整个列表
+                var cat = MainCategories.FirstOrDefault(c => c.Id == EditingCatId);
+                if (cat != null) cat.Name = CatInputName;
+                ShowToast("已修改主分类");
+            }
+            else if (CatInputMode == 3)
+            {
+                var newSub = await Supabase.InsertSubCategoryAsync(new SubCategoryInfo { MainCategoryId = TargetMainCatId, Name = CatInputName });
+                if (newSub != null)
+                {
+                    SubCategories.Add(newSub);
+                    Model.SubCategoryId = newSub.Id; // 新增后自动选中
+                    ShowToast("已新增子分类");
+                }
+            }
+            else if (CatInputMode == 4)
+            {
+                await Supabase.UpdateSubCategoryAsync(EditingCatId, CatInputName);
+                var sub = SubCategories.FirstOrDefault(s => s.Id == EditingCatId);
+                if (sub != null) sub.Name = CatInputName;
+                ShowToast("已修改子分类");
+            }
+        }
+        catch (Exception ex)
+        {
+            ShowToast("操作失败: " + ex.Message);
+        }
+
+        CloseCatInput();
+    }
+
+    // 确认删除分类 (软删除)
+    private async Task DeleteCurrentCategory()
+    {
+        try
+        {
+            if (CatInputMode == 2) // 删除主类
+            {
+                await Supabase.SoftDeleteMainCategoryAsync(EditingCatId);
+                var cat = MainCategories.FirstOrDefault(c => c.Id == EditingCatId);
+                if (cat != null) cat.IsDeleted = true;
+                Model.MainCategoryId = 0; // 清空选中状态
+                ShowToast("已删除主分类");
+            }
+            else if (CatInputMode == 4) // 删除子类
+            {
+                await Supabase.SoftDeleteSubCategoryAsync(EditingCatId);
+                var sub = SubCategories.FirstOrDefault(s => s.Id == EditingCatId);
+                if (sub != null) sub.IsDeleted = true;
+                Model.SubCategoryId = null; // 清空选中状态
+                ShowToast("已删除子分类");
+            }
+        }
+        catch (Exception ex)
+        {
+            ShowToast("删除失败: " + ex.Message);
+        }
+        
+        CloseCatInput();
     }
 }
