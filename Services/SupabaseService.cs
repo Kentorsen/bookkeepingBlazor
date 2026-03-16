@@ -1,4 +1,5 @@
-﻿using BookkeepingBlazor.Models;
+﻿using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
+using BookkeepingBlazor.Models;
 using BookkeepingBlazor.Pages;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -15,12 +16,14 @@ namespace BookkeepingBlazor.Services
         private readonly string SupabaseAnonKey;
         private readonly HttpClient _http;
         private readonly IJSRuntime _js; // 💡 新增 JS 运行时
+        private readonly IWebAssemblyHostEnvironment _env;// 💡 新增环境变量
         private string? _cachedToken; // 💡 用于在内存中记住 Token
 
-        public SupabaseService(HttpClient http, IConfiguration config, IJSRuntime js)
+        public SupabaseService(HttpClient http, IConfiguration config, IJSRuntime js, IWebAssemblyHostEnvironment env)
         {
             _http = http;
             _js = js;
+            _env = env;
             SupabaseUrl = config["Supabase:Url"];
             SupabaseAnonKey = config["Supabase:Key"];
         }
@@ -29,7 +32,13 @@ namespace BookkeepingBlazor.Services
         private void ApplyAuthHeaders(HttpRequestMessage request)
         {
             request.Headers.Add("apikey", SupabaseAnonKey);
+
+            // 💡 修复逻辑：
+            // 1. 优先使用真实登录拿到的 _cachedToken
+            // 2. 如果没登录（比如在开发环境），必须显式使用 SupabaseAnonKey 兜底
+            // 否则 Header 会变成 "Bearer " (后面是空的)，导致 401 错误
             var token = !string.IsNullOrEmpty(_cachedToken) ? _cachedToken : SupabaseAnonKey;
+
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
         }
 
@@ -58,19 +67,66 @@ namespace BookkeepingBlazor.Services
         // 2. 验证当前是否已登录
         public async Task<bool> IsLoggedInAsync()
         {
+            // 💡 需求 1：如果是本地开发环境，直接放行！
+            if (_env.IsDevelopment())
+            {
+                _cachedToken = null;
+                return true;
+            }
+
+            // 💡 需求 2：检查距离上次打开 APP 是否超过了 7 天
+            var lastActiveStr = await _js.InvokeAsync<string>("authHelper.getItem", "sb-last-active");
+            if (long.TryParse(lastActiveStr, out var lastActiveSec))
+            {
+                var daysInactive = (DateTimeOffset.UtcNow.ToUnixTimeSeconds() - lastActiveSec) / 86400.0;
+                if (daysInactive > 7)
+                {
+                    await LogoutAsync(); // 超过7天，强制清除登录状态
+                    return false;
+                }
+            }
+
+            // 更新本次活跃时间
+            await _js.InvokeVoidAsync("authHelper.setItem", "sb-last-active", DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString());
+
             if (string.IsNullOrEmpty(_cachedToken)) return false;
 
+            // 检查当前 Token 是否有效
             var request = new HttpRequestMessage(HttpMethod.Get, $"{SupabaseUrl}/auth/v1/user");
             ApplyAuthHeaders(request);
             var response = await _http.SendAsync(request);
 
+            if (response.IsSuccessStatusCode) return true;
+
+            // 💡 如果请求失败（通常是因为 1 小时的 accessToken 过期了），自动静默刷新！
+            return await TryRefreshTokenAsync();
+        }
+
+        private async Task<bool> TryRefreshTokenAsync()
+        {
+            var refreshToken = await _js.InvokeAsync<string>("authHelper.getItem", "sb-refresh");
+            if (string.IsNullOrEmpty(refreshToken)) return false;
+
+            var payload = new { refresh_token = refreshToken };
+            var request = new HttpRequestMessage(HttpMethod.Post, $"{SupabaseUrl}/auth/v1/token?grant_type=refresh_token");
+            request.Headers.Add("apikey", SupabaseAnonKey);
+            request.Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+
+            var response = await _http.SendAsync(request);
             if (!response.IsSuccessStatusCode)
             {
-                // 如果报错说明 Token 过期了，清理掉
-                await _js.InvokeVoidAsync("authHelper.removeItem", "sb-token");
-                _cachedToken = null;
+                await LogoutAsync(); // 刷新失败（可能在其他设备被登出），清空状态
                 return false;
             }
+
+            var json = await response.Content.ReadAsStringAsync();
+            using var doc = JsonDocument.Parse(json);
+            _cachedToken = doc.RootElement.GetProperty("access_token").GetString();
+            var newRefreshToken = doc.RootElement.GetProperty("refresh_token").GetString();
+
+            // 存入新的令牌
+            await _js.InvokeVoidAsync("authHelper.setItem", "sb-token", _cachedToken);
+            await _js.InvokeVoidAsync("authHelper.setItem", "sb-refresh", newRefreshToken);
             return true;
         }
 
@@ -93,10 +149,12 @@ namespace BookkeepingBlazor.Services
         // 4. 拿着邮箱去 users 表里换取真实数字 ID
         public async Task<long> GetCurrentAppUserIdAsync()
         {
+            // 💡 如果是本地开发环境，伪装成 ID = 1 的用户（比如“一一”），直接返回
+            if (_env.IsDevelopment()) return 1;
+
             var email = await GetCurrentUserEmailAsync();
             if (string.IsNullOrEmpty(email)) return 0;
 
-            // 💡 利用 Supabase API 直接查询邮箱匹配的 ID
             var users = await GetListAsync<AppUser>($"users?email=eq.{email}&select=id");
             return users.FirstOrDefault()?.Id ?? 0;
         }
@@ -124,31 +182,36 @@ namespace BookkeepingBlazor.Services
         // 2. 拿着用户输入的验证码去校验
         public async Task<string?> VerifyOtpAsync(string email, string token)
         {
-            // type = "email" 表示我们要验证的是邮箱的 6 位数字验证码
             var payload = new { type = "email", email = email, token = token };
-            var json = JsonSerializer.Serialize(payload);
-
             var request = new HttpRequestMessage(HttpMethod.Post, $"{SupabaseUrl}/auth/v1/verify");
             request.Headers.Add("apikey", SupabaseAnonKey);
-            request.Content = new StringContent(json, Encoding.UTF8, "application/json");
+            request.Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
 
             var response = await _http.SendAsync(request);
-            if (!response.IsSuccessStatusCode)
-            {
-                throw new Exception("验证码错误或已过期！");
-            }
+            if (!response.IsSuccessStatusCode) throw new Exception("验证码错误或已过期！");
 
-            // 验证成功！提取 Token 并存起来
             var responseJson = await response.Content.ReadAsStringAsync();
             using var doc = JsonDocument.Parse(responseJson);
             var accessToken = doc.RootElement.GetProperty("access_token").GetString();
+            var refreshToken = doc.RootElement.GetProperty("refresh_token").GetString(); // 💡 获取长效刷新令牌
 
             if (!string.IsNullOrEmpty(accessToken))
             {
                 _cachedToken = accessToken;
+                // 💡 同时保存 token、refresh_token 和当前活跃时间戳
                 await _js.InvokeVoidAsync("authHelper.setItem", "sb-token", accessToken);
+                await _js.InvokeVoidAsync("authHelper.setItem", "sb-refresh", refreshToken);
+                await _js.InvokeVoidAsync("authHelper.setItem", "sb-last-active", DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString());
             }
             return accessToken;
+        }
+
+        public async Task LogoutAsync()
+        {
+            _cachedToken = null;
+            await _js.InvokeVoidAsync("authHelper.removeItem", "sb-token");
+            await _js.InvokeVoidAsync("authHelper.removeItem", "sb-refresh");
+            await _js.InvokeVoidAsync("authHelper.removeItem", "sb-last-active");
         }
 
         private async Task<List<T>> GetListAsync<T>(string relativeUrl)
@@ -157,7 +220,13 @@ namespace BookkeepingBlazor.Services
             ApplyAuthHeaders(request);
 
             var response = await _http.SendAsync(request);
-            response.EnsureSuccessStatusCode();
+            if(!response.IsSuccessStatusCode)
+            {
+                // 💡 调试技巧：如果还是 401，把 Body 打印出来看看具体的报错原因
+                var errorBody = await response.Content.ReadAsStringAsync();
+                Console.WriteLine($"[DEBUG] 401 详情: {errorBody}");
+                response.EnsureSuccessStatusCode();
+            }
 
             var json = await response.Content.ReadAsStringAsync();
 
