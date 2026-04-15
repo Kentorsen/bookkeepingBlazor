@@ -74,6 +74,13 @@ namespace BookkeepingBlazor.Services
                 return true;
             }
 
+            // 1. 内存里没有，去硬盘 (localStorage) 找
+            if (string.IsNullOrEmpty(_cachedToken))
+            {
+                _cachedToken = await _js.InvokeAsync<string>("authHelper.getItem", "sb-token");
+            }
+            if (string.IsNullOrEmpty(_cachedToken)) return false;
+
             // 💡 需求 2：检查距离上次打开 APP 是否超过了 7 天
             var lastActiveStr = await _js.InvokeAsync<string>("authHelper.getItem", "sb-last-active");
             if (long.TryParse(lastActiveStr, out var lastActiveSec))
@@ -89,17 +96,32 @@ namespace BookkeepingBlazor.Services
             // 更新本次活跃时间
             await _js.InvokeVoidAsync("authHelper.setItem", "sb-last-active", DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString());
 
-            if (string.IsNullOrEmpty(_cachedToken)) return false;
-
-            // 检查当前 Token 是否有效
             var request = new HttpRequestMessage(HttpMethod.Get, $"{SupabaseUrl}/auth/v1/user");
             ApplyAuthHeaders(request);
-            var response = await _http.SendAsync(request);
 
-            if (response.IsSuccessStatusCode) return true;
+            // 检查当前 Token 是否有效
+            try
+            {
+                var response = await _http.SendAsync(request);
 
-            // 💡 如果请求失败（通常是因为 1 小时的 accessToken 过期了），自动静默刷新！
-            return await TryRefreshTokenAsync();
+                if (response.IsSuccessStatusCode) return true;
+
+                // 💡 只有明确返回 401 (Unauthorized) 或 403，才说明是 Token 的问题，才去刷新
+                if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized ||
+                    response.StatusCode == System.Net.HttpStatusCode.Forbidden)
+                {
+                    return await TryRefreshTokenAsync();
+                }
+
+                // 其他错误（比如 500 服务器错误），先假定没掉线，不要踢人
+                return true;
+            }
+            catch (Exception)
+            {
+                // 💡 关键修复：网络断开、iOS 冷启动网络未就绪，直接进入捕获！
+                // 此时绝对不能调用 LogoutAsync()！先让页面加载出来再说。
+                return true;
+            }
         }
 
         private async Task<bool> TryRefreshTokenAsync()
@@ -110,24 +132,32 @@ namespace BookkeepingBlazor.Services
             var payload = new { refresh_token = refreshToken };
             var request = new HttpRequestMessage(HttpMethod.Post, $"{SupabaseUrl}/auth/v1/token?grant_type=refresh_token");
             request.Headers.Add("apikey", SupabaseAnonKey);
-            request.Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+            request.Content = new StringContent(System.Text.Json.JsonSerializer.Serialize(payload), System.Text.Encoding.UTF8, "application/json");
 
-            var response = await _http.SendAsync(request);
-            if (!response.IsSuccessStatusCode)
+            try
             {
-                await LogoutAsync(); // 刷新失败（可能在其他设备被登出），清空状态
-                return false;
+                var response = await _http.SendAsync(request);
+                if (!response.IsSuccessStatusCode)
+                {
+                    // 刷新失败（通常是因为 refresh_token 也过期或被篡改），这才清空状态
+                    await LogoutAsync();
+                    return false;
+                }
+
+                var json = await response.Content.ReadAsStringAsync();
+                using var doc = System.Text.Json.JsonDocument.Parse(json);
+                _cachedToken = doc.RootElement.GetProperty("access_token").GetString();
+                var newRefreshToken = doc.RootElement.GetProperty("refresh_token").GetString();
+
+                await _js.InvokeVoidAsync("authHelper.setItem", "sb-token", _cachedToken);
+                await _js.InvokeVoidAsync("authHelper.setItem", "sb-refresh", newRefreshToken);
+                return true;
             }
-
-            var json = await response.Content.ReadAsStringAsync();
-            using var doc = JsonDocument.Parse(json);
-            _cachedToken = doc.RootElement.GetProperty("access_token").GetString();
-            var newRefreshToken = doc.RootElement.GetProperty("refresh_token").GetString();
-
-            // 存入新的令牌
-            await _js.InvokeVoidAsync("authHelper.setItem", "sb-token", _cachedToken);
-            await _js.InvokeVoidAsync("authHelper.setItem", "sb-refresh", newRefreshToken);
-            return true;
+            catch (Exception)
+            {
+                // 💡 同样的修复：如果是断网导致的刷新失败，千万不要踢人！
+                return true;
+            }
         }
 
         // 3. 解析出当前登录的邮箱
