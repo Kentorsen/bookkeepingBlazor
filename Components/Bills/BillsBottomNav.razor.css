@@ -36,3 +36,41 @@
     line-height: 1;
     box-shadow: 0 8px 18px rgba(239,156,184,.24);
 }
+.bottom-action-bar {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 56px;
+    background: rgba(255,255,255,.99);
+    backdrop-filter: blur(12px);
+    border-radius: 0;
+    display: grid;
+    grid-template-columns: 1fr 1fr 56px 1fr 1fr;
+    align-items: center;
+    padding: 0 10px;
+    box-sizing: border-box;
+    box-shadow: none;
+    border-top: 1px solid #e8e8ee;
+}
+
+.bar-btn {
+    border: none;
+    background: transparent;
+    font-size: 12px;
+    color: #7d879b;
+    height: 34px;
+}
+
+.add-btn {
+    width: 48px;
+    height: 48px;
+    margin: 0 auto;
+    border: none;
+    border-radius: 999px;
+    background: linear-gradient(135deg,#f6bfd2,#ef9cb8);
+    color: #fff;
+    font-size: 26px;
+    line-height: 1;
+    box-shadow: 0 8px 18px rgba(239,156,184,.24);
+}
