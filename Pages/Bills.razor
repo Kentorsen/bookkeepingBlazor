@@ -4,14 +4,11 @@
 
 <div class="bill-shell">
     <BillsHomeView @ref="HomeViewRef" />
-
-    <footer class="bottom-action-bar">
-        <button class="bar-btn" @onclick="ShowStatsPlaceholderAsync">统计</button>
-        <button class="bar-btn" @onclick="RefreshBillsAsync">刷新</button>
-        <button class="add-btn" @onclick="OpenAddBillAsync" aria-label="添加">＋</button>
-        <button class="bar-btn" @onclick="ShowFilterPlaceholderAsync">筛选</button>
-        <button class="bar-btn" @onclick="ShowMorePlaceholderAsync">更多</button>
-    </footer>
+    <BillsBottomNav OnStatsClick="ShowStatsPlaceholderAsync"
+                    OnRefreshClick="RefreshBillsAsync"
+                    OnAddClick="OpenAddBillAsync"
+                    OnFilterClick="ShowFilterPlaceholderAsync"
+                    OnMoreClick="ShowMorePlaceholderAsync" />
 </div>
 
 @code {
