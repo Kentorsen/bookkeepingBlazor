@@ -1,0 +1,15 @@
+<footer class="bottom-action-bar">
+    <button class="bar-btn" @onclick="OnStatsClick">统计</button>
+    <button class="bar-btn" @onclick="OnRefreshClick">刷新</button>
+    <button class="add-btn" @onclick="OnAddClick" aria-label="添加">＋</button>
+    <button class="bar-btn" @onclick="OnFilterClick">筛选</button>
+    <button class="bar-btn" @onclick="OnMoreClick">更多</button>
+</footer>
+
+@code {
+    [Parameter] public EventCallback OnStatsClick { get; set; }
+    [Parameter] public EventCallback OnRefreshClick { get; set; }
+    [Parameter] public EventCallback OnAddClick { get; set; }
+    [Parameter] public EventCallback OnFilterClick { get; set; }
+    [Parameter] public EventCallback OnMoreClick { get; set; }
+}
