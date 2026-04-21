@@ -35,7 +35,7 @@
     private async Task ShowFilterPlaceholderAsync()
     {
         if (HomeViewRef is null) return;
-        await HomeViewRef.ShowShellToastAsync("筛选功能后续接");
+        await HomeViewRef.ToggleFilterModeFromShellAsync();
     }
 
     private async Task ShowMorePlaceholderAsync()

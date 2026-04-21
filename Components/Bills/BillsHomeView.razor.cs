@@ -27,6 +27,22 @@ public partial class BillsHomeView : IDisposable
     private enum PeriodMode { Month, Day }
     private enum SummaryPage { Expense, Income }
     private enum SwipeSide { None, Left, Right }
+    private enum ScreenMode { Home, Filter }
+    private enum FilterTab { Condition, Marked }
+    private enum IoFilter { Expense, Income, All }
+    private enum TriState { No, Yes, All }
+    private enum ConditionField
+    {
+        IoType,
+        Amount,
+        Category,
+        Name,
+        Date,
+        IsExtra,
+        Owner,
+        Payer,
+        Marked
+    }
 
     private bool ShowEditor;
     private long? EditingBillId;
@@ -89,21 +105,86 @@ public partial class BillsHomeView : IDisposable
     private Dictionary<long, string> UserNameMap = new() { { 1, "一一" }, { 2, "依依" } };
     private Dictionary<long, string> MainCategoryNameMap = new();
     private Dictionary<long, string> SubCategoryNameMap = new();
+    private List<MainCategoryInfo> MainCategoryItems = new();
+    private List<SubCategoryInfo> SubCategoryItems = new();
     private long YiyiRoleId = DefaultYiyiRoleId;
     private long Yiyi2RoleId = DefaultYiyi2RoleId;
     private long SharedRoleId = DefaultSharedRoleId;
     private DateTime InitialDateForAdd = DateTime.Today;
+    private List<Bill> ConditionFilteredBills = new();
+    private List<Bill> MarkedFilteredBills = new();
+    private List<Bill> FilterAllBills = new();
+    private bool IsFilterDataLoaded;
+    private bool ShowConditionBuilder;
+    private HashSet<ConditionField> ActiveConditionFields = new();
+    private HashSet<ConditionField> DraftConditionFields = new();
+    private IoFilter DraftConditionIoFilter = IoFilter.Expense;
+    private decimal? DraftFilterMinAmount;
+    private decimal? DraftFilterMaxAmount;
+    private string DraftFilterKeyword = "";
+    private DateOnly? DraftFilterStartDate;
+    private DateOnly? DraftFilterEndDate;
+    private TriState DraftExtraFilter = TriState.All;
+    private TriState DraftMarkedFilter = TriState.All;
+    private long? DraftFilterOwnerRoleId;
+    private long? DraftFilterPayerRoleId;
+    private HashSet<long> DraftExpenseMainCategoryIds = new();
+    private HashSet<long> DraftExpenseSubCategoryIds = new();
+    private HashSet<long> DraftIncomeMainCategoryIds = new();
+    private HashSet<long> DraftIncomeSubCategoryIds = new();
+    private ScreenMode CurrentScreenMode = ScreenMode.Home;
+    private FilterTab CurrentFilterTab = FilterTab.Condition;
+    private bool IsFilterConditionCollapsed;
+    private bool IsFilterStatsCollapsed;
+    private bool IsConditionFilterApplied;
+    private bool IsMarkedFilterApplied;
+    private decimal? FilterMinAmount;
+    private decimal? FilterMaxAmount;
+    private string FilterKeyword = "";
+    private DateOnly? FilterStartDate;
+    private DateOnly? FilterEndDate;
+    private IoFilter ConditionIoFilter = IoFilter.Expense;
+    private IoFilter MarkIoFilter = IoFilter.Expense;
+    private TriState ExtraFilter = TriState.All;
+    private TriState MarkedFilter = TriState.No;
+    private long? FilterOwnerRoleId;
+    private long? FilterPayerRoleId;
+    private HashSet<long> ExpenseMainCategoryIds = new();
+    private HashSet<long> ExpenseSubCategoryIds = new();
+    private HashSet<long> IncomeMainCategoryIds = new();
+    private HashSet<long> IncomeSubCategoryIds = new();
+    private sealed record MarkSettlement(decimal YiyiNeedPayYiyi2)
+    {
+        public decimal Yiyi2NeedPayYiyi => -YiyiNeedPayYiyi2;
+    }
 
     private string CurrentDisplayTitle =>
         CurrentMode == PeriodMode.Month
             ? $"{FocusedDate.Year}年{FocusedDate.Month:D2}月"
             : $"{FocusedDate.Year}年{FocusedDate.Month:D2}月{FocusedDate.Day:D2}日";
 
+    private IReadOnlyList<Bill> DisplayedBills =>
+        CurrentScreenMode == ScreenMode.Filter
+            ? (CurrentFilterTab == FilterTab.Condition
+                ? (IsConditionFilterApplied ? ConditionFilteredBills : Array.Empty<Bill>())
+                : (IsMarkedFilterApplied ? MarkedFilteredBills : Array.Empty<Bill>()))
+            : BillItems;
+    private bool IsCurrentFilterApplied =>
+        CurrentFilterTab == FilterTab.Condition ? IsConditionFilterApplied : IsMarkedFilterApplied;
+    private bool CanConfirmConditionBuilder => DraftConditionFields.Count > 0;
+    private bool IsDraftExpenseCategoryEnabled => DraftConditionIoFilter != IoFilter.Income;
+    private bool IsDraftIncomeCategoryEnabled => DraftConditionIoFilter != IoFilter.Expense;
+    private BillSummary CurrentSummaryData =>
+        CurrentScreenMode == ScreenMode.Filter ? FilterSummary : Summary;
+
     private List<BillDayGroup> GroupedBills =>
-        BillItems.OrderByDescending(x => x.BillDate).ThenByDescending(x => x.Id)
+        DisplayedBills.OrderByDescending(x => x.BillDate).ThenByDescending(x => x.Id)
             .GroupBy(x => GetBillDate(x))
             .Select(g => new BillDayGroup(g.Key, g.ToList(), g.Where(x => x.IoType == 1).Sum(x => x.Amount), g.Where(x => x.IoType == 2).Sum(x => x.Amount)))
             .ToList();
+
+    private BillSummary FilterSummary => BuildSummary(ConditionFilteredBills);
+    private MarkSettlement FilterSettlement => BuildMarkSettlement(MarkedFilteredBills);
 
     protected override async Task OnInitializedAsync()
     {
@@ -117,6 +198,7 @@ public partial class BillsHomeView : IDisposable
 
         SyncPickerValue();
         await LoadReferenceDataAsync();
+        ResetFilterDefaults();
         await LoadBillsAsync();
     }
 
@@ -131,10 +213,200 @@ public partial class BillsHomeView : IDisposable
         return Task.CompletedTask;
     }
 
+    public async Task ToggleFilterModeFromShellAsync()
+    {
+        if (CurrentScreenMode == ScreenMode.Filter)
+        {
+            CurrentScreenMode = ScreenMode.Home;
+        }
+        else
+        {
+            CurrentScreenMode = ScreenMode.Filter;
+            if (FilterStartDate is null || FilterEndDate is null)
+            {
+                ResetFilterDefaults();
+            }
+            await EnsureFilterBillsLoadedAsync();
+        }
+
+        CloseSwipeImmediate();
+        StateHasChanged();
+    }
+
     public async Task ShowShellToastAsync(string message)
     {
         await ShowToastAsync(message);
     }
+
+    private void ResetFilterDefaults()
+    {
+        var now = DateTime.Today;
+        var monthStart = new DateOnly(now.Year, now.Month, 1);
+        var monthEnd = monthStart.AddMonths(1).AddDays(-1);
+        FilterStartDate = monthStart;
+        FilterEndDate = monthEnd;
+        ConditionIoFilter = IoFilter.Expense;
+        MarkIoFilter = IoFilter.Expense;
+        ExtraFilter = TriState.All;
+        MarkedFilter = TriState.All;
+        FilterOwnerRoleId = null;
+        FilterPayerRoleId = null;
+        FilterKeyword = "";
+        FilterMinAmount = null;
+        FilterMaxAmount = null;
+        ExpenseMainCategoryIds.Clear();
+        ExpenseSubCategoryIds.Clear();
+        IncomeMainCategoryIds.Clear();
+        IncomeSubCategoryIds.Clear();
+        ActiveConditionFields.Clear();
+        IsConditionFilterApplied = false;
+        IsMarkedFilterApplied = false;
+        ConditionFilteredBills.Clear();
+        MarkedFilteredBills.Clear();
+    }
+
+    private void OpenConditionBuilder()
+    {
+        DraftConditionFields = ActiveConditionFields.ToHashSet();
+        DraftConditionIoFilter = ConditionIoFilter;
+        DraftFilterMinAmount = FilterMinAmount;
+        DraftFilterMaxAmount = FilterMaxAmount;
+        DraftFilterKeyword = FilterKeyword;
+        DraftFilterStartDate = FilterStartDate;
+        DraftFilterEndDate = FilterEndDate;
+        DraftExtraFilter = ExtraFilter;
+        DraftMarkedFilter = MarkedFilter;
+        DraftFilterOwnerRoleId = FilterOwnerRoleId;
+        DraftFilterPayerRoleId = FilterPayerRoleId;
+        DraftExpenseMainCategoryIds = ExpenseMainCategoryIds.ToHashSet();
+        DraftExpenseSubCategoryIds = ExpenseSubCategoryIds.ToHashSet();
+        DraftIncomeMainCategoryIds = IncomeMainCategoryIds.ToHashSet();
+        DraftIncomeSubCategoryIds = IncomeSubCategoryIds.ToHashSet();
+        ShowConditionBuilder = true;
+    }
+
+    private void CancelConditionBuilder()
+    {
+        ShowConditionBuilder = false;
+    }
+
+    private async Task ConfirmConditionBuilderAsync()
+    {
+        if (!CanConfirmConditionBuilder) return;
+        await EnsureFilterBillsLoadedAsync();
+
+        ActiveConditionFields = DraftConditionFields.ToHashSet();
+        ConditionIoFilter = DraftConditionIoFilter;
+        FilterMinAmount = DraftFilterMinAmount;
+        FilterMaxAmount = DraftFilterMaxAmount;
+        FilterKeyword = DraftFilterKeyword;
+        FilterStartDate = DraftFilterStartDate;
+        FilterEndDate = DraftFilterEndDate;
+        ExtraFilter = DraftExtraFilter;
+        MarkedFilter = DraftMarkedFilter;
+        FilterOwnerRoleId = DraftFilterOwnerRoleId;
+        FilterPayerRoleId = DraftFilterPayerRoleId;
+        ExpenseMainCategoryIds = DraftExpenseMainCategoryIds.ToHashSet();
+        ExpenseSubCategoryIds = DraftExpenseSubCategoryIds.ToHashSet();
+        IncomeMainCategoryIds = DraftIncomeMainCategoryIds.ToHashSet();
+        IncomeSubCategoryIds = DraftIncomeSubCategoryIds.ToHashSet();
+
+        if (!ActiveConditionFields.Contains(ConditionField.Marked))
+        {
+            MarkedFilter = TriState.All;
+        }
+
+        ShowConditionBuilder = false;
+        CurrentFilterTab = FilterTab.Condition;
+        IsConditionFilterApplied = true;
+        ConditionFilteredBills = ApplyFilter(GetFilterSourceBills(), FilterTab.Condition).ToList();
+        await ShowToastAsync("筛选已应用");
+    }
+
+    private async Task RemoveConditionFieldAsync(ConditionField field)
+    {
+        if (!ActiveConditionFields.Remove(field)) return;
+        await EnsureFilterBillsLoadedAsync();
+
+        if (ActiveConditionFields.Count == 0)
+        {
+            IsConditionFilterApplied = false;
+            ConditionFilteredBills.Clear();
+            await ShowToastAsync("已移除全部条件");
+            return;
+        }
+
+        ConditionFilteredBills = ApplyFilter(GetFilterSourceBills(), FilterTab.Condition).ToList();
+        await ShowToastAsync("已更新条件");
+    }
+
+    private IEnumerable<(ConditionField Field, string Label)> GetConditionTags()
+    {
+        foreach (var field in ActiveConditionFields)
+        {
+            var label = GetConditionTagLabel(field);
+            if (!string.IsNullOrWhiteSpace(label))
+            {
+                yield return (field, label);
+            }
+        }
+    }
+
+    private string GetConditionTagLabel(ConditionField field)
+    {
+        return field switch
+        {
+            ConditionField.IoType => $"类型：{GetIoFilterText(ConditionIoFilter)}",
+            ConditionField.Amount => $"金额：{FilterMinAmount?.ToString() ?? "-"}~{FilterMaxAmount?.ToString() ?? "-"}",
+            ConditionField.Category => BuildCategoryTagLabel(),
+            ConditionField.Name => $"名称：{(string.IsNullOrWhiteSpace(FilterKeyword) ? "-" : FilterKeyword)}",
+            ConditionField.Date => $"日期：{FilterStartDate?.ToString("yyyy/MM/dd") ?? "-"}~{FilterEndDate?.ToString("yyyy/MM/dd") ?? "-"}",
+            ConditionField.IsExtra => $"额外：{GetTriStateText(ExtraFilter)}",
+            ConditionField.Owner => $"所属方：{GetRoleName(FilterOwnerRoleId ?? 0)}",
+            ConditionField.Payer => $"付款/收款方：{GetRoleName(FilterPayerRoleId ?? 0)}",
+            ConditionField.Marked => $"标记：{GetTriStateText(MarkedFilter)}",
+            _ => string.Empty
+        };
+    }
+
+    private string BuildCategoryTagLabel()
+    {
+        var mainSet = ConditionIoFilter == IoFilter.Income ? IncomeMainCategoryIds : ExpenseMainCategoryIds;
+        var subSet = ConditionIoFilter == IoFilter.Income ? IncomeSubCategoryIds : ExpenseSubCategoryIds;
+        if (mainSet.Count == 0) return "类别：-";
+        if (mainSet.Count >= 3) return $"类别：{mainSet.Count}项";
+        if (mainSet.Count == 2)
+        {
+            var names = mainSet.Select(GetMainCategoryName).ToList();
+            return $"类别：{string.Join('、', names)}";
+        }
+
+        var mainId = mainSet.First();
+        var mainName = GetMainCategoryName(mainId);
+        if (subSet.Count == 0) return $"类别：{mainName}";
+        if (subSet.Count == 1) return $"类别：{mainName}-{GetSubCategoryName(subSet.First())}";
+        if (subSet.Count == 2)
+        {
+            var n = subSet.Select(GetSubCategoryName).ToList();
+            return $"类别：{mainName}-{n[0]}、{n[1]}";
+        }
+
+        return $"类别：{mainName}等{subSet.Count}项";
+    }
+
+    private static string GetIoFilterText(IoFilter value) => value switch
+    {
+        IoFilter.Expense => "支出",
+        IoFilter.Income => "收入",
+        _ => "全部"
+    };
+
+    private static string GetTriStateText(TriState value) => value switch
+    {
+        TriState.Yes => "是",
+        TriState.No => "否",
+        _ => "全部"
+    };
 
     private async Task LoadReferenceDataAsync()
     {
@@ -178,6 +450,7 @@ public partial class BillsHomeView : IDisposable
             var mainCategories = await Supabase.GetMainCategoriesAsync();
             if (mainCategories.Count > 0)
             {
+                MainCategoryItems = mainCategories.ToList();
                 MainCategoryNameMap = mainCategories
                     .Where(x => !string.IsNullOrWhiteSpace(x.Name))
                     .GroupBy(x => x.Id)
@@ -193,6 +466,7 @@ public partial class BillsHomeView : IDisposable
             var subCategories = await Supabase.GetSubCategoriesAsync();
             if (subCategories.Count > 0)
             {
+                SubCategoryItems = subCategories.ToList();
                 SubCategoryNameMap = subCategories
                     .Where(x => !string.IsNullOrWhiteSpace(x.Name))
                     .GroupBy(x => x.Id)
@@ -220,6 +494,7 @@ public partial class BillsHomeView : IDisposable
             var (start, endExclusive) = GetRange();
             BillItems = await Supabase.GetBillsByRangeAsync(start, endExclusive);
             Summary = BuildSummary(BillItems);
+            RebuildAppliedFilterResults();
             CloseSwipeImmediate();
         }
         finally
@@ -229,9 +504,39 @@ public partial class BillsHomeView : IDisposable
         }
     }
 
+    private void RebuildAppliedFilterResults()
+    {
+        var source = GetFilterSourceBills();
+        if (IsConditionFilterApplied)
+        {
+            ConditionFilteredBills = ApplyFilter(source, FilterTab.Condition).ToList();
+        }
+
+        if (IsMarkedFilterApplied)
+        {
+            MarkedFilteredBills = ApplyFilter(source, FilterTab.Marked).ToList();
+        }
+    }
+
+    private IEnumerable<Bill> GetFilterSourceBills() =>
+        IsFilterDataLoaded ? FilterAllBills : BillItems;
+
+    private async Task EnsureFilterBillsLoadedAsync(bool force = false)
+    {
+        if (IsFilterDataLoaded && !force) return;
+        FilterAllBills = await Supabase.GetAllBillsAsync();
+        IsFilterDataLoaded = true;
+        RebuildAppliedFilterResults();
+        await InvokeAsync(StateHasChanged);
+    }
+
     private async Task RefreshBillsAsync()
     {
         await LoadBillsAsync();
+        if (CurrentScreenMode == ScreenMode.Filter || IsConditionFilterApplied || IsMarkedFilterApplied)
+        {
+            await EnsureFilterBillsLoadedAsync(true);
+        }
         await ShowToastAsync("账单已刷新");
     }
 
@@ -587,36 +892,22 @@ public partial class BillsHomeView : IDisposable
     {
         var currentUserId = await Supabase.GetCurrentAppUserIdAsync();
         await Supabase.MarkBillAsync(billId, roleId, currentUserId);
-
-        var bill = BillItems.FirstOrDefault(b => b.Id == billId);
-        if (bill is not null)
-        {
-            bill.MarkedPayerRoleId = roleId;
-            bill.UpdatedBy = currentUserId;
-            bill.UpdatedAt = DateTime.UtcNow;
-        }
-
+        var now = DateTime.UtcNow;
+        UpdateBillMarkLocally(billId, roleId, currentUserId, now);
         CloseMarkSheet();
+        RecalculateLocalState();
         await ShowToastAsync("已标记");
-        StateHasChanged();
     }
 
     private async Task CancelMarkAsync(long billId)
     {
         var currentUserId = await Supabase.GetCurrentAppUserIdAsync();
         await Supabase.ClearBillMarkAsync(billId, currentUserId);
-
-        var bill = BillItems.FirstOrDefault(b => b.Id == billId);
-        if (bill is not null)
-        {
-            bill.MarkedPayerRoleId = 0;
-            bill.UpdatedBy = currentUserId;
-            bill.UpdatedAt = DateTime.UtcNow;
-        }
-
+        var now = DateTime.UtcNow;
+        UpdateBillMarkLocally(billId, 0, currentUserId, now);
         CloseSwipeImmediate();
+        RecalculateLocalState();
         await ShowToastAsync("已取消标记");
-        StateHasChanged();
     }
 
     private async Task DeleteBillAsync(long billId)
@@ -626,9 +917,39 @@ public partial class BillsHomeView : IDisposable
 
         var currentUserId = await Supabase.GetCurrentAppUserIdAsync();
         await Supabase.SoftDeleteBillAsync(billId, currentUserId);
+        BillItems.RemoveAll(b => b.Id == billId);
+        if (IsFilterDataLoaded)
+        {
+            FilterAllBills.RemoveAll(b => b.Id == billId);
+        }
         CloseSwipeImmediate();
-        await LoadBillsAsync();
+        RecalculateLocalState();
         await ShowToastAsync("已删除");
+    }
+
+    private void UpdateBillMarkLocally(long billId, long markedPayerRoleId, long updatedBy, DateTime updatedAt)
+    {
+        var sourceLists = new List<List<Bill>> { BillItems };
+        if (IsFilterDataLoaded)
+        {
+            sourceLists.Add(FilterAllBills);
+        }
+
+        foreach (var list in sourceLists)
+        {
+            var bill = list.FirstOrDefault(b => b.Id == billId);
+            if (bill is null) continue;
+            bill.MarkedPayerRoleId = markedPayerRoleId;
+            bill.UpdatedBy = updatedBy;
+            bill.UpdatedAt = updatedAt;
+        }
+    }
+
+    private void RecalculateLocalState()
+    {
+        Summary = BuildSummary(BillItems);
+        RebuildAppliedFilterResults();
+        StateHasChanged();
     }
 
     private async Task ShowToastAsync(string message)
@@ -681,6 +1002,412 @@ public partial class BillsHomeView : IDisposable
         _ => ""
     };
 
+    private IReadOnlyList<Bill> ApplyFilter(IEnumerable<Bill> source, FilterTab targetTab)
+    {
+        IEnumerable<Bill> query = source;
+
+        if (targetTab == FilterTab.Marked)
+        {
+            query = query.Where(b => b.MarkedPayerRoleId > 0);
+            query = ApplyIoFilter(query, MarkIoFilter);
+
+            if (FilterStartDate.HasValue)
+            {
+                var start = FilterStartDate.Value.ToDateTime(TimeOnly.MinValue);
+                query = query.Where(b => b.BillDate.HasValue && b.BillDate.Value.Date >= start.Date);
+            }
+
+            if (FilterEndDate.HasValue)
+            {
+                var end = FilterEndDate.Value.ToDateTime(TimeOnly.MinValue);
+                query = query.Where(b => b.BillDate.HasValue && b.BillDate.Value.Date <= end.Date);
+            }
+        }
+        else
+        {
+            if (ActiveConditionFields.Contains(ConditionField.IoType))
+            {
+                query = ApplyIoFilter(query, ConditionIoFilter);
+            }
+
+            if (ActiveConditionFields.Contains(ConditionField.Amount) && FilterMinAmount.HasValue)
+            {
+                query = query.Where(b => b.Amount >= FilterMinAmount.Value);
+            }
+
+            if (ActiveConditionFields.Contains(ConditionField.Amount) && FilterMaxAmount.HasValue)
+            {
+                query = query.Where(b => b.Amount <= FilterMaxAmount.Value);
+            }
+
+            if (ActiveConditionFields.Contains(ConditionField.IsExtra) && ExtraFilter != TriState.All)
+            {
+                var isExtra = ExtraFilter == TriState.Yes;
+                query = query.Where(b => b.IsExtra == isExtra);
+            }
+
+            if (ActiveConditionFields.Contains(ConditionField.Marked) && MarkedFilter != TriState.All)
+            {
+                var isMarked = MarkedFilter == TriState.Yes;
+                query = query.Where(b => (b.MarkedPayerRoleId > 0) == isMarked);
+            }
+
+            if (ActiveConditionFields.Contains(ConditionField.Owner) && FilterOwnerRoleId.HasValue && FilterOwnerRoleId.Value > 0)
+            {
+                query = query.Where(b => b.OwnerRoleId == FilterOwnerRoleId.Value);
+            }
+
+            if (ActiveConditionFields.Contains(ConditionField.Payer) && FilterPayerRoleId.HasValue && FilterPayerRoleId.Value > 0)
+            {
+                query = query.Where(b => b.PayerRoleId == FilterPayerRoleId.Value);
+            }
+
+            if (ActiveConditionFields.Contains(ConditionField.Category))
+            {
+                query = query.Where(FilterCategoryMatch);
+            }
+
+            if (ActiveConditionFields.Contains(ConditionField.Name))
+            {
+                var tokens = (FilterKeyword ?? string.Empty)
+                    .Split(' ', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+
+                if (tokens.Length > 0)
+                {
+                    query = query.Where(b =>
+                    {
+                        var title = b.Title ?? string.Empty;
+                        return tokens.All(t => title.Contains(t, StringComparison.OrdinalIgnoreCase));
+                    });
+                }
+            }
+
+            if (ActiveConditionFields.Contains(ConditionField.Date) && FilterStartDate.HasValue)
+            {
+                var start = FilterStartDate.Value.ToDateTime(TimeOnly.MinValue);
+                query = query.Where(b => b.BillDate.HasValue && b.BillDate.Value.Date >= start.Date);
+            }
+
+            if (ActiveConditionFields.Contains(ConditionField.Date) && FilterEndDate.HasValue)
+            {
+                var end = FilterEndDate.Value.ToDateTime(TimeOnly.MinValue);
+                query = query.Where(b => b.BillDate.HasValue && b.BillDate.Value.Date <= end.Date);
+            }
+        }
+
+        return query.ToList();
+    }
+
+    private IEnumerable<Bill> ApplyIoFilter(IEnumerable<Bill> source, IoFilter filter)
+    {
+        return filter switch
+        {
+            IoFilter.Expense => source.Where(b => b.IoType == 1),
+            IoFilter.Income => source.Where(b => b.IoType == 2),
+            _ => source
+        };
+    }
+
+    private bool FilterCategoryMatch(Bill bill)
+    {
+        if (ConditionIoFilter == IoFilter.Expense || ConditionIoFilter == IoFilter.All)
+        {
+            if (bill.IoType == 1)
+            {
+                if (ExpenseMainCategoryIds.Count > 0 && !ExpenseMainCategoryIds.Contains(bill.MainCategoryId)) return false;
+                if (ExpenseSubCategoryIds.Count > 0 && (!bill.SubCategoryId.HasValue || !ExpenseSubCategoryIds.Contains(bill.SubCategoryId.Value))) return false;
+            }
+        }
+
+        if (ConditionIoFilter == IoFilter.Income || ConditionIoFilter == IoFilter.All)
+        {
+            if (bill.IoType == 2)
+            {
+                if (IncomeMainCategoryIds.Count > 0 && !IncomeMainCategoryIds.Contains(bill.MainCategoryId)) return false;
+                if (IncomeSubCategoryIds.Count > 0 && (!bill.SubCategoryId.HasValue || !IncomeSubCategoryIds.Contains(bill.SubCategoryId.Value))) return false;
+            }
+        }
+
+        return true;
+    }
+
+    private MarkSettlement BuildMarkSettlement(IEnumerable<Bill> source)
+    {
+        decimal net = 0m;
+        foreach (var bill in source.Where(b => b.MarkedPayerRoleId > 0))
+        {
+            net += CalculateSettlementForYiyi(bill.PayerRoleId, bill.MarkedPayerRoleId, bill.Amount);
+        }
+
+        return new MarkSettlement(net);
+    }
+
+    private decimal CalculateSettlementForYiyi(long shouldPayRoleId, long actualPayRoleId, decimal amount)
+    {
+        if (shouldPayRoleId == YiyiRoleId && actualPayRoleId == Yiyi2RoleId) return amount;
+        if (shouldPayRoleId == YiyiRoleId && actualPayRoleId == SharedRoleId) return amount / 2m;
+        if (shouldPayRoleId == Yiyi2RoleId && actualPayRoleId == YiyiRoleId) return -amount;
+        if (shouldPayRoleId == Yiyi2RoleId && actualPayRoleId == SharedRoleId) return -amount / 2m;
+        if (shouldPayRoleId == SharedRoleId && actualPayRoleId == YiyiRoleId) return -amount / 2m;
+        if (shouldPayRoleId == SharedRoleId && actualPayRoleId == Yiyi2RoleId) return amount / 2m;
+        return 0m;
+    }
+
+    private async Task ClearMarkedBillsAsync()
+    {
+        var target = MarkedFilteredBills.Where(x => x.MarkedPayerRoleId > 0).ToList();
+        if (target.Count == 0)
+        {
+            await ShowToastAsync("当前没有可结清账单");
+            return;
+        }
+
+        var ok = await JS.InvokeAsync<bool>("confirm", $"确定将当前筛选结果中的 {target.Count} 条标记账单设为已结清吗？");
+        if (!ok) return;
+
+        var currentUserId = await Supabase.GetCurrentAppUserIdAsync();
+        foreach (var bill in target)
+        {
+            await Supabase.ClearBillMarkAsync(bill.Id, currentUserId);
+            bill.MarkedPayerRoleId = 0;
+            bill.UpdatedBy = currentUserId;
+            bill.UpdatedAt = DateTime.UtcNow;
+        }
+
+        await LoadBillsAsync();
+        await ShowToastAsync("已结清");
+    }
+
+    private IEnumerable<MainCategoryInfo> GetMainCategoriesForType(short ioType)
+    {
+        return MainCategoryItems
+            .Where(x => !x.IsDeleted && x.Type == ioType)
+            .OrderBy(x => x.Id);
+    }
+
+    private IEnumerable<SubCategoryInfo> GetSubCategoriesForMain(long mainCategoryId)
+    {
+        return SubCategoryItems
+            .Where(x => !x.IsDeleted && x.MainCategoryId == mainCategoryId)
+            .OrderBy(x => x.Id);
+    }
+
+    private void ToggleMainCategory(bool isExpense, long categoryId)
+    {
+        var set = isExpense ? ExpenseMainCategoryIds : IncomeMainCategoryIds;
+        var subSet = isExpense ? ExpenseSubCategoryIds : IncomeSubCategoryIds;
+        if (!set.Add(categoryId))
+        {
+            set.Remove(categoryId);
+        }
+
+        if (set.Count != 1)
+        {
+            subSet.Clear();
+        }
+    }
+
+    private void ToggleSubCategory(bool isExpense, long categoryId)
+    {
+        var mainSet = isExpense ? ExpenseMainCategoryIds : IncomeMainCategoryIds;
+        if (mainSet.Count != 1) return;
+
+        var subSet = isExpense ? ExpenseSubCategoryIds : IncomeSubCategoryIds;
+        if (!subSet.Add(categoryId))
+        {
+            subSet.Remove(categoryId);
+        }
+    }
+
+    private void ClearCategorySelection(bool isExpense)
+    {
+        if (isExpense)
+        {
+            ExpenseMainCategoryIds.Clear();
+            ExpenseSubCategoryIds.Clear();
+        }
+        else
+        {
+            IncomeMainCategoryIds.Clear();
+            IncomeSubCategoryIds.Clear();
+        }
+    }
+
+    private void SelectAllMainCategories(bool isExpense)
+    {
+        var source = GetMainCategoriesForType(isExpense ? (short)1 : (short)2).Select(x => x.Id).ToHashSet();
+        if (isExpense)
+        {
+            ExpenseMainCategoryIds = source;
+            if (ExpenseMainCategoryIds.Count != 1) ExpenseSubCategoryIds.Clear();
+        }
+        else
+        {
+            IncomeMainCategoryIds = source;
+            if (IncomeMainCategoryIds.Count != 1) IncomeSubCategoryIds.Clear();
+        }
+    }
+
+    private bool IsDraftFieldChecked(ConditionField field) => DraftConditionFields.Contains(field);
+
+    private void ToggleDraftField(ConditionField field, bool isChecked)
+    {
+        if (isChecked)
+        {
+            DraftConditionFields.Add(field);
+        }
+        else
+        {
+            DraftConditionFields.Remove(field);
+        }
+    }
+
+    private void SwitchFilterTab(FilterTab tab)
+    {
+        CurrentFilterTab = tab;
+        var source = GetFilterSourceBills();
+
+        if (tab == FilterTab.Condition && IsConditionFilterApplied)
+        {
+            ConditionFilteredBills = ApplyFilter(source, FilterTab.Condition).ToList();
+        }
+        else if (tab == FilterTab.Marked && IsMarkedFilterApplied)
+        {
+            MarkedFilteredBills = ApplyFilter(source, FilterTab.Marked).ToList();
+        }
+    }
+
+    private void ToggleDraftMainCategory(bool isExpense, long categoryId)
+    {
+        if (isExpense && !IsDraftExpenseCategoryEnabled) return;
+        if (!isExpense && !IsDraftIncomeCategoryEnabled) return;
+        var set = isExpense ? DraftExpenseMainCategoryIds : DraftIncomeMainCategoryIds;
+        var subSet = isExpense ? DraftExpenseSubCategoryIds : DraftIncomeSubCategoryIds;
+        if (!set.Add(categoryId))
+        {
+            set.Remove(categoryId);
+        }
+
+        if (set.Count != 1)
+        {
+            subSet.Clear();
+        }
+    }
+
+    private void ToggleDraftSubCategory(bool isExpense, long categoryId)
+    {
+        if (isExpense && !IsDraftExpenseCategoryEnabled) return;
+        if (!isExpense && !IsDraftIncomeCategoryEnabled) return;
+        var mainSet = isExpense ? DraftExpenseMainCategoryIds : DraftIncomeMainCategoryIds;
+        if (mainSet.Count != 1) return;
+        var subSet = isExpense ? DraftExpenseSubCategoryIds : DraftIncomeSubCategoryIds;
+        if (!subSet.Add(categoryId))
+        {
+            subSet.Remove(categoryId);
+        }
+    }
+
+    private void DraftSelectAllMainCategories(bool isExpense)
+    {
+        if (isExpense && !IsDraftExpenseCategoryEnabled) return;
+        if (!isExpense && !IsDraftIncomeCategoryEnabled) return;
+        var source = GetMainCategoriesForType(isExpense ? (short)1 : (short)2).Select(x => x.Id).ToHashSet();
+        if (isExpense)
+        {
+            DraftExpenseMainCategoryIds = source;
+            if (DraftExpenseMainCategoryIds.Count != 1) DraftExpenseSubCategoryIds.Clear();
+        }
+        else
+        {
+            DraftIncomeMainCategoryIds = source;
+            if (DraftIncomeMainCategoryIds.Count != 1) DraftIncomeSubCategoryIds.Clear();
+        }
+    }
+
+    private void DraftClearCategorySelection(bool isExpense)
+    {
+        if (isExpense && !IsDraftExpenseCategoryEnabled) return;
+        if (!isExpense && !IsDraftIncomeCategoryEnabled) return;
+        if (isExpense)
+        {
+            DraftExpenseMainCategoryIds.Clear();
+            DraftExpenseSubCategoryIds.Clear();
+        }
+        else
+        {
+            DraftIncomeMainCategoryIds.Clear();
+            DraftIncomeSubCategoryIds.Clear();
+        }
+    }
+
+    private void DraftSelectAllSubCategories(bool isExpense)
+    {
+        if (isExpense && !IsDraftExpenseCategoryEnabled) return;
+        if (!isExpense && !IsDraftIncomeCategoryEnabled) return;
+        var mainSet = isExpense ? DraftExpenseMainCategoryIds : DraftIncomeMainCategoryIds;
+        if (mainSet.Count != 1) return;
+        var parentId = mainSet.First();
+        var all = GetSubCategoriesForMain(parentId).Select(x => x.Id).ToHashSet();
+        if (isExpense)
+        {
+            DraftExpenseSubCategoryIds = all;
+        }
+        else
+        {
+            DraftIncomeSubCategoryIds = all;
+        }
+    }
+
+    private void SelectAllSubCategories(bool isExpense)
+    {
+        var mainSet = isExpense ? ExpenseMainCategoryIds : IncomeMainCategoryIds;
+        if (mainSet.Count != 1) return;
+        var parentId = mainSet.First();
+        var all = GetSubCategoriesForMain(parentId).Select(x => x.Id).ToHashSet();
+        if (isExpense)
+        {
+            ExpenseSubCategoryIds = all;
+        }
+        else
+        {
+            IncomeSubCategoryIds = all;
+        }
+    }
+
+    private async Task ApplyFilterNowAsync()
+    {
+        await EnsureFilterBillsLoadedAsync();
+        var source = GetFilterSourceBills();
+        if (CurrentFilterTab == FilterTab.Condition)
+        {
+            IsConditionFilterApplied = true;
+            ConditionFilteredBills = ApplyFilter(source, FilterTab.Condition).ToList();
+        }
+        else
+        {
+            IsMarkedFilterApplied = true;
+            MarkedFilteredBills = ApplyFilter(source, FilterTab.Marked).ToList();
+        }
+
+        CloseSwipeImmediate();
+        await ShowToastAsync("筛选已应用");
+    }
+
+    private void SetDraftConditionIoFilter(IoFilter value)
+    {
+        DraftConditionIoFilter = value;
+        if (value == IoFilter.Expense)
+        {
+            DraftIncomeMainCategoryIds.Clear();
+            DraftIncomeSubCategoryIds.Clear();
+        }
+        else if (value == IoFilter.Income)
+        {
+            DraftExpenseMainCategoryIds.Clear();
+            DraftExpenseSubCategoryIds.Clear();
+        }
+    }
+
     public void Dispose()
     {
         LongPressCts?.Cancel();
@@ -710,24 +1437,12 @@ public partial class BillsHomeView : IDisposable
         ShowEditor = false;
     }
 
-    private Task HandleEditorSaved(Bill savedBill)
+    private async Task HandleEditorSaved(Bill savedBill)
     {
         ShowEditor = false;
 
-        if (EditingBillId.HasValue && EditingBillId.Value > 0)
-        {
-            var index = BillItems.FindIndex(b => b.Id == savedBill.Id);
-            if (index >= 0) BillItems[index] = savedBill;
-        }
-        else
-        {
-            BillItems.Add(savedBill);
-        }
-
-        BillItems = BillItems.OrderByDescending(b => b.BillDate)
-            .ThenByDescending(b => b.CreatedAt)
-            .ToList();
-
+        UpsertBillLocally(savedBill);
+        RecalculateLocalState();
         HighlightedBillId = savedBill.Id;
         StateHasChanged();
         _ = ShowToastAsync("保存成功");
@@ -739,6 +1454,69 @@ public partial class BillsHomeView : IDisposable
             await InvokeAsync(StateHasChanged);
         });
 
-        return Task.CompletedTask;
+    }
+
+    private void UpsertBillLocally(Bill savedBill)
+    {
+        UpsertHomeBillInRange(savedBill);
+        if (IsFilterDataLoaded)
+        {
+            UpsertBillInList(FilterAllBills, savedBill);
+        }
+    }
+
+    private void UpsertHomeBillInRange(Bill savedBill)
+    {
+        var inRange = IsBillInCurrentHomeRange(savedBill);
+        var index = BillItems.FindIndex(b => b.Id == savedBill.Id);
+        if (!inRange)
+        {
+            if (index >= 0)
+            {
+                BillItems.RemoveAt(index);
+            }
+            return;
+        }
+
+        if (index >= 0)
+        {
+            BillItems[index] = savedBill;
+        }
+        else
+        {
+            BillItems.Add(savedBill);
+        }
+
+        BillItems = BillItems
+            .OrderByDescending(b => b.BillDate)
+            .ThenByDescending(b => b.Id)
+            .ToList();
+    }
+
+    private static void UpsertBillInList(List<Bill> source, Bill savedBill)
+    {
+        var index = source.FindIndex(b => b.Id == savedBill.Id);
+        if (index >= 0)
+        {
+            source[index] = savedBill;
+        }
+        else
+        {
+            source.Add(savedBill);
+        }
+
+        source.Sort((a, b) =>
+        {
+            var dateCompare = Nullable.Compare(b.BillDate, a.BillDate);
+            return dateCompare != 0 ? dateCompare : b.Id.CompareTo(a.Id);
+        });
+    }
+
+    private bool IsBillInCurrentHomeRange(Bill bill)
+    {
+        if (!bill.BillDate.HasValue) return false;
+        var (start, endExclusive) = GetRange();
+        var date = DateOnly.FromDateTime(bill.BillDate.Value);
+        return date >= start && date < endExclusive;
     }
 }
