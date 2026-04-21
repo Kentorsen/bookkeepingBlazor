@@ -207,10 +207,10 @@ public partial class BillsHomeView : IDisposable
         await RefreshBillsAsync();
     }
 
-    public Task OpenAddFromShellAsync()
+    public async Task OpenAddFromShellAsync()
     {
         OpenAddBill();
-        return Task.CompletedTask;
+        await InvokeAsync(StateHasChanged);
     }
 
     public async Task ToggleFilterModeFromShellAsync()
