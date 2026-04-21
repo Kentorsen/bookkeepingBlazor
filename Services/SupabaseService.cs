@@ -296,6 +296,12 @@ namespace BookkeepingBlazor.Services
             return GetListAsync<Bill>(url);
         }
 
+        public Task<List<Bill>> GetAllBillsAsync()
+        {
+            return GetListAsync<Bill>(
+                "bills?select=*&is_deleted=is.false&order=bill_date.desc,id.desc");
+        }
+
         public Task<List<RoleInfo>> GetRolesAsync()
         {
             return GetListAsync<RoleInfo>(

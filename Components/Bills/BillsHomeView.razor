@@ -1,23 +1,116 @@
 @using BookkeepingBlazor.Pages
 
-<div class="bill-app">
-    <section class="region1">
-        <button class="r1-arrow" @onclick="GoPrevious" aria-label="上一项">‹</button>
+<div class="bill-app @(CurrentScreenMode == ScreenMode.Filter ? "filter-screen" : "")">
+    @if (CurrentScreenMode == ScreenMode.Home)
+    {
+        <section class="region1">
+            <button class="r1-arrow" @onclick="GoPrevious" aria-label="上一项">‹</button>
 
-        <div class="r1-center"
-             @onpointerdown="HandleDatePointerDown"
-             @onpointerup="HandleDatePointerUp"
-             @onpointerleave="HandleDatePointerLeave"
-             @onclick="HandleDateAreaClick">
-            <div class="r1-title">@CurrentDisplayTitle</div>
-            <div class="r1-mode-line">
-                <span class="r1-mode">@((CurrentMode == PeriodMode.Month) ? "按月" : "按日")</span>
-                <span class="r1-tip">（单击选择，长按切换）</span>
+            <div class="r1-center"
+                 @onpointerdown="HandleDatePointerDown"
+                 @onpointerup="HandleDatePointerUp"
+                 @onpointerleave="HandleDatePointerLeave"
+                 @onclick="HandleDateAreaClick">
+                <div class="r1-title">@CurrentDisplayTitle</div>
+                <div class="r1-mode-line">
+                    <span class="r1-mode">@((CurrentMode == PeriodMode.Month) ? "按月" : "按日")</span>
+                    <span class="r1-tip">（单击选择，长按切换）</span>
+                </div>
             </div>
-        </div>
 
-        <button class="r1-arrow" @onclick="GoNext" aria-label="下一项">›</button>
-    </section>
+            <button class="r1-arrow" @onclick="GoNext" aria-label="下一项">›</button>
+        </section>
+    }
+    else
+    {
+        <section class="filter-mode-panel">
+            <div class="filter-tab-row">
+                <button class="filter-tab-btn @(CurrentFilterTab == FilterTab.Condition ? "active" : "")" @onclick="@(() => SwitchFilterTab(FilterTab.Condition))">条件筛选</button>
+                <button class="filter-tab-btn @(CurrentFilterTab == FilterTab.Marked ? "active" : "")" @onclick="@(() => SwitchFilterTab(FilterTab.Marked))">标记筛选</button>
+            </div>
+
+            <div class="filter-card">
+                <div class="filter-card-head">
+                    <span>筛选条件</span>
+                    <button class="collapse-btn" @onclick="@(() => IsFilterConditionCollapsed = !IsFilterConditionCollapsed)">
+                        @(IsFilterConditionCollapsed ? "展开" : "收起")
+                    </button>
+                </div>
+                @if (!IsFilterConditionCollapsed)
+                {
+                    <div class="filter-card-body">
+                        @if (CurrentFilterTab == FilterTab.Condition)
+                        {
+                            <div class="selected-condition-chips">
+                                @if (ActiveConditionFields.Count == 0)
+                                {
+                                    <div class="filter-tip">暂无筛选条件</div>
+                                }
+                                else
+                                {
+                                    @foreach (var tag in GetConditionTags())
+                                    {
+                                        <button type="button" class="selected-chip" @onclick="@(() => RemoveConditionFieldAsync(tag.Field))">
+                                            <span>@tag.Label</span>
+                                            <span class="chip-close">×</span>
+                                        </button>
+                                    }
+                                }
+                            </div>
+                            <button type="button" class="add-condition-btn" @onclick="OpenConditionBuilder">+ 添加条件</button>
+                        }
+                        else
+                        {
+                            <div class="filter-row">
+                                <span class="filter-label">账单类型</span>
+                                <div class="chip-row">
+                                    <button type="button" class="mini-chip @(MarkIoFilter == IoFilter.Expense ? "active" : "")" @onclick="@(() => MarkIoFilter = IoFilter.Expense)">支出</button>
+                                    <button type="button" class="mini-chip @(MarkIoFilter == IoFilter.Income ? "active" : "")" @onclick="@(() => MarkIoFilter = IoFilter.Income)">收入</button>
+                                </div>
+                            </div>
+                            <div class="filter-row">
+                                <span class="filter-label">日期</span>
+                                <input class="filter-input" type="date" @bind="FilterStartDate" />
+                                <span class="range-sep">~</span>
+                                <input class="filter-input" type="date" @bind="FilterEndDate" />
+                            </div>
+                        }
+                        @if (CurrentFilterTab == FilterTab.Marked)
+                        {
+                            <div class="filter-actions">
+                                <button class="picker-btn light" @onclick="ResetFilterDefaults">重置</button>
+                                <button class="picker-btn primary" @onclick="ApplyFilterNowAsync">筛选</button>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+
+            @if (CurrentFilterTab == FilterTab.Marked)
+            {
+                <div class="filter-card">
+                    <div class="filter-card-head">
+                        <span>统计</span>
+                        <button class="collapse-btn" @onclick="@(() => IsFilterStatsCollapsed = !IsFilterStatsCollapsed)">
+                            @(IsFilterStatsCollapsed ? "展开" : "收起")
+                        </button>
+                    </div>
+                    @if (!IsFilterStatsCollapsed)
+                    {
+                        <div class="filter-card-body">
+                            <div class="settle-grid">
+                                <div class="settle-label">依依应付一一</div>
+                                <div class="settle-amount">@Fmt(FilterSettlement.YiyiNeedPayYiyi2)</div>
+                                <div class="settle-label">一一应付依依</div>
+                                <div class="settle-amount">@Fmt(FilterSettlement.Yiyi2NeedPayYiyi)</div>
+                            </div>
+                            <button class="picker-btn primary settle-btn" @onclick="ClearMarkedBillsAsync">已结清</button>
+                        </div>
+                    }
+                </div>
+            }
+        </section>
+    }
 
     @if (ShowPicker)
     {
@@ -40,6 +133,8 @@
         </div>
     }
 
+    @if (CurrentScreenMode == ScreenMode.Home || (CurrentScreenMode == ScreenMode.Filter && CurrentFilterTab == FilterTab.Condition))
+    {
     <section class="region2"
              @onpointerdown="HandleSummaryPointerDown"
              @onpointerup="HandleSummaryPointerUp"
@@ -67,28 +162,28 @@
                         <div class="r2-person-row">
                             <div class="r2-left">
                                 <div class="r2-name">@NameYiyi</div>
-                                <div class="r2-line">个人付款 @Fmt(Summary.ExpenseYiyiPersonal)</div>
+                                <div class="r2-line">个人付款 @Fmt(CurrentSummaryData.ExpenseYiyiPersonal)</div>
                             </div>
                             <div class="r2-right">
                                 <div class="r2-total-label">总支出</div>
-                                <div class="r2-total expense">@Fmt(Summary.YiyiExpenseTotal)</div>
+                                <div class="r2-total expense">@Fmt(CurrentSummaryData.YiyiExpenseTotal)</div>
                             </div>
                         </div>
 
                         <div class="r2-person-row">
                             <div class="r2-left">
                                 <div class="r2-name">@NameYiyi2</div>
-                                <div class="r2-line">个人付款 @Fmt(Summary.ExpenseYiyi2Personal)</div>
+                                <div class="r2-line">个人付款 @Fmt(CurrentSummaryData.ExpenseYiyi2Personal)</div>
                             </div>
                             <div class="r2-right">
                                 <div class="r2-total-label">总支出</div>
-                                <div class="r2-total expense">@Fmt(Summary.Yiyi2ExpenseTotal)</div>
+                                <div class="r2-total expense">@Fmt(CurrentSummaryData.Yiyi2ExpenseTotal)</div>
                             </div>
                         </div>
 
                         <div class="r2-footer">
-                            共同支出：@Fmt(Summary.SharedExpense)
-                            <span class="r2-footer-note">（每人分摊 @Fmt(Summary.SharedExpenseHalf)）</span>
+                            共同支出：@Fmt(CurrentSummaryData.SharedExpense)
+                            <span class="r2-footer-note">（每人分摊 @Fmt(CurrentSummaryData.SharedExpenseHalf)）</span>
                         </div>
                     </section>
 
@@ -98,39 +193,40 @@
                         <div class="r2-person-row">
                             <div class="r2-left">
                                 <div class="r2-name">@NameYiyi</div>
-                                <div class="r2-line">个人收入 @Fmt(Summary.IncomeYiyiPersonal)</div>
+                                <div class="r2-line">个人收入 @Fmt(CurrentSummaryData.IncomeYiyiPersonal)</div>
                             </div>
                             <div class="r2-right">
                                 <div class="r2-total-label">结余</div>
-                                <div class="r2-total income">@Fmt(Summary.YiyiBalance)</div>
+                                <div class="r2-total income">@Fmt(CurrentSummaryData.YiyiBalance)</div>
                             </div>
                         </div>
 
                         <div class="r2-person-row">
                             <div class="r2-left">
                                 <div class="r2-name">@NameYiyi2</div>
-                                <div class="r2-line">个人收入 @Fmt(Summary.IncomeYiyi2Personal)</div>
+                                <div class="r2-line">个人收入 @Fmt(CurrentSummaryData.IncomeYiyi2Personal)</div>
                             </div>
                             <div class="r2-right">
                                 <div class="r2-total-label">结余</div>
-                                <div class="r2-total income">@Fmt(Summary.Yiyi2Balance)</div>
+                                <div class="r2-total income">@Fmt(CurrentSummaryData.Yiyi2Balance)</div>
                             </div>
                         </div>
 
                         <div class="r2-footer">
-                            共同收入：@Fmt(Summary.SharedIncome)
-                            <span class="r2-footer-note">（每人分摊 @Fmt(Summary.SharedIncomeHalf)）</span>
+                            共同收入：@Fmt(CurrentSummaryData.SharedIncome)
+                            <span class="r2-footer-note">（每人分摊 @Fmt(CurrentSummaryData.SharedIncomeHalf)）</span>
                         </div>
                     </section>
                 </div>
             </div>
         }
     </section>
+    }
 
     <section class="region3">
         <div class="r3-head">
             <div class="r3-title">账单记录</div>
-            <div class="r3-count">@BillItems.Count 条</div>
+            <div class="r3-count">@DisplayedBills.Count 条</div>
         </div>
 
         <div class="records-scroll"
@@ -162,9 +258,18 @@
             {
                 <div class="empty-box">加载中...</div>
             }
-            else if (BillItems.Count == 0)
+            else if (DisplayedBills.Count == 0)
             {
-                <div class="empty-box">当前时间范围没有账单</div>
+                <div class="empty-box">
+                    @if (CurrentScreenMode == ScreenMode.Filter)
+                    {
+                        @(IsCurrentFilterApplied ? "当前筛选结果没有账单" : "请先设置筛选条件并点击“筛选”")
+                    }
+                    else
+                    {
+                        @("当前时间范围没有账单")
+                    }
+                </div>
             }
             else
             {
@@ -300,5 +405,154 @@
                     InitialDate="InitialDateForAdd"
                     OnSaved="HandleEditorSaved"
                     OnCanceled="CloseEditor" />
+    }
+
+    @if (ShowConditionBuilder)
+    {
+        <div class="builder-overlay">
+            <div class="builder-header">
+                <div class="builder-title">添加筛选条件</div>
+                <button class="builder-close" @onclick="CancelConditionBuilder">关闭</button>
+            </div>
+            <div class="builder-content">
+                <section class="builder-item">
+                    <label><input type="checkbox" checked="@IsDraftFieldChecked(ConditionField.IoType)" @onclick="@(() => ToggleDraftField(ConditionField.IoType, !IsDraftFieldChecked(ConditionField.IoType)))" /> 账单类型</label>
+                    <div class="chip-row @(!IsDraftFieldChecked(ConditionField.IoType) ? "disabled" : "")">
+                        <button type="button" class="mini-chip @(DraftConditionIoFilter == IoFilter.Expense ? "active" : "")" @onclick="@(() => SetDraftConditionIoFilter(IoFilter.Expense))">支出</button>
+                        <button type="button" class="mini-chip @(DraftConditionIoFilter == IoFilter.Income ? "active" : "")" @onclick="@(() => SetDraftConditionIoFilter(IoFilter.Income))">收入</button>
+                        <button type="button" class="mini-chip @(DraftConditionIoFilter == IoFilter.All ? "active" : "")" @onclick="@(() => SetDraftConditionIoFilter(IoFilter.All))">全部</button>
+                    </div>
+                </section>
+
+                <section class="builder-item">
+                    <label><input type="checkbox" checked="@IsDraftFieldChecked(ConditionField.Amount)" @onclick="@(() => ToggleDraftField(ConditionField.Amount, !IsDraftFieldChecked(ConditionField.Amount)))" /> 金额范围</label>
+                    <div class="filter-row">
+                        <input class="filter-input" type="number" placeholder="最小" @bind="DraftFilterMinAmount" disabled="@(!IsDraftFieldChecked(ConditionField.Amount))" />
+                        <span class="range-sep">~</span>
+                        <input class="filter-input" type="number" placeholder="最大" @bind="DraftFilterMaxAmount" disabled="@(!IsDraftFieldChecked(ConditionField.Amount))" />
+                    </div>
+                </section>
+
+                <section class="builder-item">
+                    <label><input type="checkbox" checked="@IsDraftFieldChecked(ConditionField.Name)" @onclick="@(() => ToggleDraftField(ConditionField.Name, !IsDraftFieldChecked(ConditionField.Name)))" /> 名称</label>
+                    <input class="filter-input grow" type="text" placeholder="空格分词 AND 匹配" @bind="DraftFilterKeyword" disabled="@(!IsDraftFieldChecked(ConditionField.Name))" />
+                </section>
+
+                <section class="builder-item">
+                    <label><input type="checkbox" checked="@IsDraftFieldChecked(ConditionField.Date)" @onclick="@(() => ToggleDraftField(ConditionField.Date, !IsDraftFieldChecked(ConditionField.Date)))" /> 日期</label>
+                    <div class="filter-row">
+                        <input class="filter-input" type="date" @bind="DraftFilterStartDate" disabled="@(!IsDraftFieldChecked(ConditionField.Date))" />
+                        <span class="range-sep">~</span>
+                        <input class="filter-input" type="date" @bind="DraftFilterEndDate" disabled="@(!IsDraftFieldChecked(ConditionField.Date))" />
+                    </div>
+                </section>
+
+                <section class="builder-item">
+                    <label><input type="checkbox" checked="@IsDraftFieldChecked(ConditionField.IsExtra)" @onclick="@(() => ToggleDraftField(ConditionField.IsExtra, !IsDraftFieldChecked(ConditionField.IsExtra)))" /> 是否额外</label>
+                    <div class="chip-row @(!IsDraftFieldChecked(ConditionField.IsExtra) ? "disabled" : "")">
+                        <button type="button" class="mini-chip @(DraftExtraFilter == TriState.All ? "active" : "")" @onclick="@(() => DraftExtraFilter = TriState.All)">全部</button>
+                        <button type="button" class="mini-chip @(DraftExtraFilter == TriState.Yes ? "active" : "")" @onclick="@(() => DraftExtraFilter = TriState.Yes)">是</button>
+                        <button type="button" class="mini-chip @(DraftExtraFilter == TriState.No ? "active" : "")" @onclick="@(() => DraftExtraFilter = TriState.No)">否</button>
+                    </div>
+                </section>
+
+                <section class="builder-item">
+                    <label><input type="checkbox" checked="@IsDraftFieldChecked(ConditionField.Owner)" @onclick="@(() => ToggleDraftField(ConditionField.Owner, !IsDraftFieldChecked(ConditionField.Owner)))" /> 所属方</label>
+                    <div class="chip-row @(!IsDraftFieldChecked(ConditionField.Owner) ? "disabled" : "")">
+                        <button type="button" class="mini-chip @(!DraftFilterOwnerRoleId.HasValue ? "active" : "")" @onclick="@(() => DraftFilterOwnerRoleId = null)">全部</button>
+                        @foreach (var role in RoleItems)
+                        {
+                            <button type="button" class="mini-chip @(DraftFilterOwnerRoleId == role.Id ? "active" : "")" @onclick="@(() => DraftFilterOwnerRoleId = role.Id)">@role.Name</button>
+                        }
+                    </div>
+                </section>
+
+                <section class="builder-item">
+                    <label><input type="checkbox" checked="@IsDraftFieldChecked(ConditionField.Payer)" @onclick="@(() => ToggleDraftField(ConditionField.Payer, !IsDraftFieldChecked(ConditionField.Payer)))" /> 付款/收款方</label>
+                    <div class="chip-row @(!IsDraftFieldChecked(ConditionField.Payer) ? "disabled" : "")">
+                        <button type="button" class="mini-chip @(!DraftFilterPayerRoleId.HasValue ? "active" : "")" @onclick="@(() => DraftFilterPayerRoleId = null)">全部</button>
+                        @foreach (var role in RoleItems)
+                        {
+                            <button type="button" class="mini-chip @(DraftFilterPayerRoleId == role.Id ? "active" : "")" @onclick="@(() => DraftFilterPayerRoleId = role.Id)">@role.Name</button>
+                        }
+                    </div>
+                </section>
+
+                <section class="builder-item">
+                    <label><input type="checkbox" checked="@IsDraftFieldChecked(ConditionField.Marked)" @onclick="@(() => ToggleDraftField(ConditionField.Marked, !IsDraftFieldChecked(ConditionField.Marked)))" /> 标记</label>
+                    <div class="chip-row @(!IsDraftFieldChecked(ConditionField.Marked) ? "disabled" : "")">
+                        <button type="button" class="mini-chip @(DraftMarkedFilter == TriState.No ? "active" : "")" @onclick="@(() => DraftMarkedFilter = TriState.No)">否</button>
+                        <button type="button" class="mini-chip @(DraftMarkedFilter == TriState.Yes ? "active" : "")" @onclick="@(() => DraftMarkedFilter = TriState.Yes)">是</button>
+                        <button type="button" class="mini-chip @(DraftMarkedFilter == TriState.All ? "active" : "")" @onclick="@(() => DraftMarkedFilter = TriState.All)">全部</button>
+                    </div>
+                </section>
+
+                <section class="builder-item">
+                    <label><input type="checkbox" checked="@IsDraftFieldChecked(ConditionField.Category)" @onclick="@(() => ToggleDraftField(ConditionField.Category, !IsDraftFieldChecked(ConditionField.Category)))" /> 类别 <span class="filter-tip-inline">（可多选）</span></label>
+                    <div class="builder-category-block @(!IsDraftFieldChecked(ConditionField.Category) ? "disabled" : "")">
+                        <div class="filter-row @(!IsDraftExpenseCategoryEnabled ? "disabled" : "")">
+                            <span class="filter-label">支出主类别</span>
+                            <button type="button" class="mini-chip clear" @onclick="@(() => DraftSelectAllMainCategories(true))">全选</button>
+                            <button type="button" class="mini-chip clear" @onclick="@(() => DraftClearCategorySelection(true))">清空</button>
+                        </div>
+                        <div class="chip-wrap five-grid @(!IsDraftExpenseCategoryEnabled ? "disabled" : "")">
+                            @foreach (var cat in GetMainCategoriesForType(1))
+                            {
+                                <button type="button" class="mini-chip @(DraftExpenseMainCategoryIds.Contains(cat.Id) ? "active" : "")"
+                                        @onclick="@(() => ToggleDraftMainCategory(true, cat.Id))">@cat.Name</button>
+                            }
+                        </div>
+                        @if (IsDraftExpenseCategoryEnabled && DraftExpenseMainCategoryIds.Count == 1)
+                        {
+                            var parentId = DraftExpenseMainCategoryIds.First();
+                            <div class="filter-row">
+                                <span class="filter-label">支出子类别</span>
+                                <button type="button" class="mini-chip clear" @onclick="@(() => DraftSelectAllSubCategories(true))">全选</button>
+                                <button type="button" class="mini-chip clear" @onclick="@(() => DraftExpenseSubCategoryIds.Clear())">清空</button>
+                            </div>
+                            <div class="chip-wrap five-grid">
+                                @foreach (var sub in GetSubCategoriesForMain(parentId))
+                                {
+                                    <button type="button" class="mini-chip @(DraftExpenseSubCategoryIds.Contains(sub.Id) ? "active" : "")"
+                                            @onclick="@(() => ToggleDraftSubCategory(true, sub.Id))">@sub.Name</button>
+                                }
+                            </div>
+                        }
+                        <div class="filter-row @(!IsDraftIncomeCategoryEnabled ? "disabled" : "")">
+                            <span class="filter-label">收入主类别</span>
+                            <button type="button" class="mini-chip clear" @onclick="@(() => DraftSelectAllMainCategories(false))">全选</button>
+                            <button type="button" class="mini-chip clear" @onclick="@(() => DraftClearCategorySelection(false))">清空</button>
+                        </div>
+                        <div class="chip-wrap five-grid @(!IsDraftIncomeCategoryEnabled ? "disabled" : "")">
+                            @foreach (var cat in GetMainCategoriesForType(2))
+                            {
+                                <button type="button" class="mini-chip @(DraftIncomeMainCategoryIds.Contains(cat.Id) ? "active" : "")"
+                                        @onclick="@(() => ToggleDraftMainCategory(false, cat.Id))">@cat.Name</button>
+                            }
+                        </div>
+                        @if (IsDraftIncomeCategoryEnabled && DraftIncomeMainCategoryIds.Count == 1)
+                        {
+                            var parentId = DraftIncomeMainCategoryIds.First();
+                            <div class="filter-row">
+                                <span class="filter-label">收入子类别</span>
+                                <button type="button" class="mini-chip clear" @onclick="@(() => DraftSelectAllSubCategories(false))">全选</button>
+                                <button type="button" class="mini-chip clear" @onclick="@(() => DraftIncomeSubCategoryIds.Clear())">清空</button>
+                            </div>
+                            <div class="chip-wrap five-grid">
+                                @foreach (var sub in GetSubCategoriesForMain(parentId))
+                                {
+                                    <button type="button" class="mini-chip @(DraftIncomeSubCategoryIds.Contains(sub.Id) ? "active" : "")"
+                                            @onclick="@(() => ToggleDraftSubCategory(false, sub.Id))">@sub.Name</button>
+                                }
+                            </div>
+                        }
+                    </div>
+                </section>
+            </div>
+            <div class="builder-actions">
+                <button class="picker-btn light" @onclick="CancelConditionBuilder">取消</button>
+                <button class="picker-btn primary" @onclick="ConfirmConditionBuilderAsync" disabled="@(!CanConfirmConditionBuilder)">确定</button>
+            </div>
+        </div>
     }
 </div>
