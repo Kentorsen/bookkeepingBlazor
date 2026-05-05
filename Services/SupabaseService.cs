@@ -377,6 +377,19 @@ namespace BookkeepingBlazor.Services
                 });
         }
 
+        public Task UpdateBillCategoryAsync(long billId, long mainCategoryId, long? subCategoryId, long updatedBy)
+        {
+            return PatchAsync(
+                $"bills?id=eq.{billId}",
+                new
+                {
+                    main_category_id = mainCategoryId,
+                    sub_category_id = subCategoryId,
+                    updated_at = DateTime.UtcNow,
+                    updated_by = updatedBy
+                });
+        }
+
         // ================= 核心：带有返回值的 POST 请求 =================
         // 用于在插入数据后，要求 Supabase 直接返回插入成功的数据（包含自动生成的 ID）
         private async Task<T?> PostAndReturnAsync<T>(string relativeUrl, object payload)

@@ -226,8 +226,8 @@
 
             <footer class="fix-actions">
                 <button class="dialog-btn primary" @onclick="OpenFixCategoryPicker">修改类别</button>
-                <button class="dialog-btn" disabled="@(!CanCompleteCategoryDelete)" @onclick="CompleteCategoryDeleteAsync">完成</button>
-                <button class="dialog-btn" @onclick="CloseCategoryFixScreen">取消</button>
+                <button class="dialog-btn" @onclick="CompleteCategoryDeleteAsync">完成</button>
+                <button class="dialog-btn" @onclick="CancelCategoryFixScreenAsync">取消</button>
             </footer>
         </section>
     }
@@ -237,7 +237,6 @@
         <div class="dialog-mask"></div>
         <div class="input-dialog fix-picker-dialog">
             <div class="dialog-title">批量修改到新类别</div>
-            <div class="fix-picker-hint">此步骤先展示画面，后续再接入真实保存逻辑。</div>
             <div class="fix-picker-hint">再次点击已选中的类别按钮可查看全名</div>
 
             <div class="fix-picker-section">
@@ -285,7 +284,7 @@
 
             <div class="dialog-footer">
                 <button class="dialog-btn" @onclick="CloseFixCategoryPicker">取消</button>
-                <button class="dialog-btn primary" @onclick="ApplyFixCategoryPreview">保存（预览）</button>
+                <button class="dialog-btn primary" @onclick="ApplyFixCategoryAsync">应用修改</button>
             </div>
         </div>
     }
@@ -760,6 +759,13 @@
         FixBills.Clear();
     }
 
+    private async Task CancelCategoryFixScreenAsync()
+    {
+        var ok = await JS.InvokeAsync<bool>("confirm", "放弃当前删除流程吗？已应用但未完成的修正不会提交到数据库。");
+        if (!ok) return;
+        CloseCategoryFixScreen();
+    }
+
     private void ToggleFixSelection(long billId, ChangeEventArgs e)
     {
         var selected = e.Value?.ToString()?.Equals("true", StringComparison.OrdinalIgnoreCase) == true;
@@ -840,7 +846,7 @@
         CategoryNamePreviewText = "";
     }
 
-    private void ApplyFixCategoryPreview()
+    private async Task ApplyFixCategoryAsync()
     {
         if (FixTargetMainCategoryId <= 0)
         {
@@ -848,22 +854,116 @@
             return;
         }
 
-        foreach (var item in FixBills.Where(x => x.IsSelected))
+        var selected = FixBills.Where(x => x.IsSelected).ToList();
+        if (selected.Count == 0)
+        {
+            ShowToast("至少选择一条账单");
+            return;
+        }
+
+        ShowFixCategoryPicker = false;
+        foreach (var item in selected)
         {
             item.IsAdjusted = true;
             item.MainCategoryId = FixTargetMainCategoryId;
             item.SubCategoryId = FixTargetSubCategoryId;
             item.IsSelected = false;
         }
-
-        ShowFixCategoryPicker = false;
-        ShowToast("已标记为已修正（预览）");
+        ShowToast($"已应用 {selected.Count} 条修改（点击完成后生效）");
     }
 
-    private Task CompleteCategoryDeleteAsync()
+    private async Task CompleteCategoryDeleteAsync()
     {
-        ShowToast("下一步会接入 RPC 正式删除逻辑");
-        return Task.CompletedTask;
+        if (!CanCompleteCategoryDelete)
+        {
+            ShowToast("仍有未修正账单");
+            return;
+        }
+
+        var currentUserId = await Supabase.GetCurrentAppUserIdAsync();
+        var staged = FixBills.Where(x => x.IsAdjusted).ToList();
+        var applySuccess = 0;
+        foreach (var item in staged)
+        {
+            try
+            {
+                await Supabase.UpdateBillCategoryAsync(item.BillId, item.MainCategoryId, item.SubCategoryId, currentUserId);
+                applySuccess++;
+            }
+            catch
+            {
+            }
+        }
+
+        if (applySuccess != staged.Count)
+        {
+            ShowToast($"提交失败：成功 {applySuccess} 条，失败 {staged.Count - applySuccess} 条");
+            return;
+        }
+
+        var allBills = await Supabase.GetAllBillsAsync();
+        var remaining = PendingDeleteIsMainCategory
+            ? allBills.Where(b => b.MainCategoryId == PendingDeleteMainCategoryId).ToList()
+            : allBills.Where(b => b.SubCategoryId.HasValue && PendingDeleteSubCategoryId.HasValue && b.SubCategoryId.Value == PendingDeleteSubCategoryId.Value).ToList();
+
+        if (remaining.Count > 0)
+        {
+            var remainingIdSet = remaining.Select(x => x.Id).ToHashSet();
+            foreach (var item in FixBills)
+            {
+                item.IsAdjusted = !remainingIdSet.Contains(item.BillId);
+            }
+            ShowToast($"仍有 {remaining.Count} 条账单未修正");
+            return;
+        }
+
+        if (PendingDeleteIsMainCategory)
+        {
+            await Supabase.SoftDeleteMainCategoryAsync(PendingDeleteMainCategoryId);
+            var main = MainCategories.FirstOrDefault(x => x.Id == PendingDeleteMainCategoryId);
+            if (main is not null) main.IsDeleted = true;
+            if (Model.MainCategoryId == PendingDeleteMainCategoryId)
+            {
+                Model.MainCategoryId = 0;
+                Model.SubCategoryId = null;
+            }
+        }
+        else if (PendingDeleteSubCategoryId.HasValue)
+        {
+            await Supabase.SoftDeleteSubCategoryAsync(PendingDeleteSubCategoryId.Value);
+            var sub = SubCategories.FirstOrDefault(x => x.Id == PendingDeleteSubCategoryId.Value);
+            if (sub is not null) sub.IsDeleted = true;
+            if (Model.SubCategoryId == PendingDeleteSubCategoryId.Value)
+            {
+                Model.SubCategoryId = null;
+            }
+        }
+
+        SyncCurrentEditingBillCategoryFromFixResult();
+        CloseCategoryFixScreen();
+        CloseCatInput();
+        ShowToast("已提交账单修正并删除类别");
+    }
+
+    private void SyncCurrentEditingBillCategoryFromFixResult()
+    {
+        long currentBillId = 0;
+        if (BillId.HasValue && BillId.Value > 0)
+        {
+            currentBillId = BillId.Value;
+        }
+        else if (Model.Id > 0)
+        {
+            currentBillId = Model.Id;
+        }
+
+        if (currentBillId <= 0) return;
+
+        var current = FixBills.FirstOrDefault(x => x.BillId == currentBillId);
+        if (current is null || !current.IsAdjusted) return;
+
+        Model.MainCategoryId = current.MainCategoryId;
+        Model.SubCategoryId = current.SubCategoryId;
     }
 
     private string GetFixBillTitle(CategoryFixBillItem item) =>
