@@ -1,9 +1,9 @@
 <footer class="bottom-action-bar">
-    <button class="bar-btn" @onclick="OnStatsClick">统计</button>
-    <button class="bar-btn" @onclick="OnRefreshClick">刷新</button>
+    <button class="bar-btn @(IsStatsActive ? "active" : "")" @onclick="HandleStatsClick">@StatsText</button>
+    <button class="bar-btn @(RefreshFlash ? "flash" : "")" @onclick="HandleRefreshClick">刷新</button>
     <button class="add-btn" @onclick="OnAddClick" aria-label="添加">＋</button>
-    <button class="bar-btn" @onclick="OnFilterClick">筛选</button>
-    <button class="bar-btn" @onclick="OnMoreClick">更多</button>
+    <button class="bar-btn @(IsFilterActive ? "active" : "")" @onclick="HandleFilterClick">@FilterText</button>
+    <button class="bar-btn @(IsMoreActive ? "active" : "")" @onclick="HandleMoreClick">@MoreText</button>
 </footer>
 
 @code {
@@ -12,4 +12,27 @@
     [Parameter] public EventCallback OnAddClick { get; set; }
     [Parameter] public EventCallback OnFilterClick { get; set; }
     [Parameter] public EventCallback OnMoreClick { get; set; }
+    [Parameter] public bool IsStatsActive { get; set; }
+    [Parameter] public bool IsFilterActive { get; set; }
+    [Parameter] public bool IsMoreActive { get; set; }
+    [Parameter] public string StatsText { get; set; } = "统计";
+    [Parameter] public string FilterText { get; set; } = "筛选";
+    [Parameter] public string MoreText { get; set; } = "更多";
+
+    private bool RefreshFlash;
+
+    private Task HandleStatsClick() => OnStatsClick.InvokeAsync();
+
+    private async Task HandleRefreshClick()
+    {
+        RefreshFlash = true;
+        await InvokeAsync(StateHasChanged);
+        _ = OnRefreshClick.InvokeAsync();
+        await Task.Delay(180);
+        RefreshFlash = false;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private Task HandleFilterClick() => OnFilterClick.InvokeAsync();
+    private Task HandleMoreClick() => OnMoreClick.InvokeAsync();
 }

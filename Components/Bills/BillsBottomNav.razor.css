@@ -23,6 +23,24 @@
     font-size: 12px;
     color: #7d879b;
     height: 34px;
+    border-radius: 10px;
+    transition: background-color .2s ease, color .2s ease, transform .12s ease;
+}
+
+.bar-btn:active {
+    background: #ffe6ef;
+    color: #b66a87;
+    transform: scale(0.97);
+}
+
+.bar-btn.active {
+    background: #ffe6ef;
+    color: #b66a87;
+}
+
+.bar-btn.flash {
+    background: #ffe6ef;
+    color: #b66a87;
 }
 
 .add-btn {

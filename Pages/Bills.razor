@@ -8,11 +8,26 @@
                     OnRefreshClick="RefreshBillsAsync"
                     OnAddClick="OpenAddBillAsync"
                     OnFilterClick="ShowFilterPlaceholderAsync"
-                    OnMoreClick="ShowMorePlaceholderAsync" />
+                    OnMoreClick="ShowMorePlaceholderAsync"
+                    IsStatsActive="@(ActivePanel == ShellPanel.Stats)"
+                    IsFilterActive="@(ActivePanel == ShellPanel.Filter)"
+                    IsMoreActive="@(ActivePanel == ShellPanel.More)"
+                    StatsText="@(ActivePanel == ShellPanel.Stats ? "返回" : "统计")"
+                    FilterText="@(ActivePanel == ShellPanel.Filter ? "返回" : "筛选")"
+                    MoreText="@(ActivePanel == ShellPanel.More ? "返回" : "更多")" />
 </div>
 
 @code {
     private BillsHomeView? HomeViewRef;
+    private ShellPanel ActivePanel = ShellPanel.None;
+
+    private enum ShellPanel
+    {
+        None,
+        Filter,
+        Stats,
+        More
+    }
 
     private async Task RefreshBillsAsync()
     {
@@ -29,18 +44,55 @@
     private async Task ShowStatsPlaceholderAsync()
     {
         if (HomeViewRef is null) return;
+        if (ActivePanel == ShellPanel.Stats)
+        {
+            ActivePanel = ShellPanel.None;
+            return;
+        }
+
+        if (ActivePanel == ShellPanel.Filter)
+        {
+            await HomeViewRef.ToggleFilterModeFromShellAsync();
+        }
+
+        ActivePanel = ShellPanel.Stats;
         await HomeViewRef.ShowShellToastAsync("统计画面后续接");
     }
 
     private async Task ShowFilterPlaceholderAsync()
     {
         if (HomeViewRef is null) return;
+        if (ActivePanel == ShellPanel.Filter)
+        {
+            await HomeViewRef.ToggleFilterModeFromShellAsync();
+            ActivePanel = ShellPanel.None;
+            return;
+        }
+
+        if (ActivePanel != ShellPanel.None)
+        {
+            ActivePanel = ShellPanel.None;
+        }
+
         await HomeViewRef.ToggleFilterModeFromShellAsync();
+        ActivePanel = ShellPanel.Filter;
     }
 
     private async Task ShowMorePlaceholderAsync()
     {
         if (HomeViewRef is null) return;
+        if (ActivePanel == ShellPanel.More)
+        {
+            ActivePanel = ShellPanel.None;
+            return;
+        }
+
+        if (ActivePanel == ShellPanel.Filter)
+        {
+            await HomeViewRef.ToggleFilterModeFromShellAsync();
+        }
+
+        ActivePanel = ShellPanel.More;
         await HomeViewRef.ShowShellToastAsync("更多功能后续接");
     }
 }
