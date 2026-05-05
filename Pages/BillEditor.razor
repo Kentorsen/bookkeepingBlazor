@@ -1,5 +1,6 @@
 ﻿@using BookkeepingBlazor.Models
 @using BookkeepingBlazor.Services
+@using System.Globalization
 @inject SupabaseService Supabase
 @inject IJSRuntime JS
 
@@ -29,8 +30,10 @@
         <section class="form-section amount-section">
             <div class="amount-wrapper @(Model.IoType == 1 ? "expense" : "income")">
                 <span class="currency">¥</span>
-                <input type="number" inputmode="decimal" class="amount-input"
-                       placeholder="0.00" @bind="Model.Amount" />
+                <input type="text" inputmode="decimal" enterkeyhint="done" class="amount-input"
+                       placeholder="0"
+                       value="@AmountInput"
+                       @oninput="OnAmountInput" />
             </div>
         </section>
 
@@ -186,6 +189,9 @@
     private long EditingCatId = 0;
     private long TargetMainCatId = 0;
 
+    /// <summary>金额输入框展示用；新增时为空，保存前解析到 Model.Amount。</summary>
+    private string AmountInput = "";
+
     protected override async Task OnInitializedAsync()
     {
         Roles = await Supabase.GetRolesAsync();
@@ -199,6 +205,7 @@
             if (dbBill != null)
             {
                 Model = dbBill;
+                AmountInput = FormatAmountForInput(Model.Amount);
             }
         }
         else
@@ -215,7 +222,24 @@
                 Model.OwnerRoleId = sharedRole.Id;
                 Model.PayerRoleId = sharedRole.Id;
             }
+            AmountInput = "";
+            Model.Amount = 0;
         }
+    }
+
+    private void OnAmountInput(ChangeEventArgs e) =>
+        AmountInput = e.Value?.ToString() ?? "";
+
+    private static string FormatAmountForInput(decimal amount) =>
+        amount.ToString("0.##########", CultureInfo.InvariantCulture);
+
+    private static bool TryParseAmountInput(string? text, out decimal amount)
+    {
+        amount = 0;
+        if (string.IsNullOrWhiteSpace(text)) return false;
+        var s = text.Trim();
+        return decimal.TryParse(s, NumberStyles.Number, CultureInfo.InvariantCulture, out amount)
+               || decimal.TryParse(s, NumberStyles.Number, CultureInfo.CurrentCulture, out amount);
     }
 
     private void SetIoType(short type)
@@ -279,7 +303,13 @@
 
     private async Task SaveBillAsync()
     {
-        if (Model.Amount <= 0) { ShowToast("金额必须大于 0"); return; }
+        if (!TryParseAmountInput(AmountInput, out var parsedAmount) || parsedAmount <= 0)
+        {
+            ShowToast("金额必须大于 0");
+            return;
+        }
+
+        Model.Amount = parsedAmount;
         if (Model.MainCategoryId == 0) { ShowToast("请选择主类别"); return; }
         if (Model.BillDate == null || Model.BillDate == default(DateTime)) { ShowToast("日期不能为空"); return; }
         if (string.IsNullOrWhiteSpace(Model.Title)) { ShowToast("名称不能为空"); return; }
