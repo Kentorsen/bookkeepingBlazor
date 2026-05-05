@@ -75,3 +75,4 @@ appsettings.Local.json
 
 .env
 .env.*
+/deploy.bat
