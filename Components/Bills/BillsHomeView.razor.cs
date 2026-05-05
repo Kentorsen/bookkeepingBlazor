@@ -27,7 +27,7 @@ public partial class BillsHomeView : IDisposable
     private enum PeriodMode { Month, Day }
     private enum SummaryPage { Expense, Income }
     private enum SwipeSide { None, Left, Right }
-    private enum ScreenMode { Home, Filter }
+    private enum ScreenMode { Home, Filter, More }
     private enum FilterTab { Condition, Marked }
     private enum IoFilter { Expense, Income, All }
     private enum TriState { No, Yes, All }
@@ -153,6 +153,9 @@ public partial class BillsHomeView : IDisposable
     private HashSet<long> ExpenseSubCategoryIds = new();
     private HashSet<long> IncomeMainCategoryIds = new();
     private HashSet<long> IncomeSubCategoryIds = new();
+    private string CurrentUserEmail = "";
+    private string CurrentUserDisplayName = "";
+    private bool IsProfileLoading;
     private sealed record MarkSettlement(decimal YiyiNeedPayYiyi2)
     {
         public decimal Yiyi2NeedPayYiyi => -YiyiNeedPayYiyi2;
@@ -233,9 +236,46 @@ public partial class BillsHomeView : IDisposable
         StateHasChanged();
     }
 
+    public async Task ToggleMoreModeFromShellAsync()
+    {
+        if (CurrentScreenMode == ScreenMode.More)
+        {
+            CurrentScreenMode = ScreenMode.Home;
+            CloseSwipeImmediate();
+            StateHasChanged();
+            return;
+        }
+
+        CurrentScreenMode = ScreenMode.More;
+        await LoadProfileAsync();
+        CloseSwipeImmediate();
+        StateHasChanged();
+    }
+
+    public async Task LogoutFromShellAsync()
+    {
+        await Supabase.LogoutAsync();
+        Nav.NavigateTo("/login", forceLoad: true);
+    }
+
     public async Task ShowShellToastAsync(string message)
     {
         await ShowToastAsync(message);
+    }
+
+    private async Task LoadProfileAsync()
+    {
+        IsProfileLoading = true;
+        try
+        {
+            var profile = await Supabase.GetCurrentUserProfileAsync();
+            CurrentUserEmail = profile.Email;
+            CurrentUserDisplayName = profile.DisplayName;
+        }
+        finally
+        {
+            IsProfileLoading = false;
+        }
     }
 
     private void ResetFilterDefaults()

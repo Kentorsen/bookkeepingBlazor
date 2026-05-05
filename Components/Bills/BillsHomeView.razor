@@ -1,6 +1,6 @@
 @using BookkeepingBlazor.Pages
 
-<div class="bill-app @(CurrentScreenMode == ScreenMode.Filter ? "filter-screen" : "")">
+<div class="bill-app @(CurrentScreenMode == ScreenMode.Filter ? "filter-screen" : "") @(CurrentScreenMode == ScreenMode.More ? "more-screen" : "")">
     @if (CurrentScreenMode == ScreenMode.Home)
     {
         <section class="region1">
@@ -21,7 +21,7 @@
             <button class="r1-arrow" @onclick="GoNext" aria-label="下一项">›</button>
         </section>
     }
-    else
+    else if (CurrentScreenMode == ScreenMode.Filter)
     {
         <section class="filter-mode-panel">
             <div class="filter-tab-row">
@@ -109,6 +109,24 @@
                     }
                 </div>
             }
+        </section>
+    }
+    else if (CurrentScreenMode == ScreenMode.More)
+    {
+        <section class="more-mode-panel">
+            <div class="profile-card">
+                <div class="profile-title">个人中心</div>
+                @if (IsProfileLoading)
+                {
+                    <div class="profile-line">加载中...</div>
+                }
+                else
+                {
+                    <div class="profile-name">@CurrentUserDisplayName</div>
+                    <div class="profile-line">@CurrentUserEmail</div>
+                }
+                <button class="logout-btn" @onclick="LogoutFromShellAsync">退出登录</button>
+            </div>
         </section>
     }
 
@@ -223,6 +241,8 @@
     </section>
     }
 
+    @if (CurrentScreenMode != ScreenMode.More)
+    {
     <section class="region3">
         <div class="r3-head">
             <div class="r3-title">账单记录</div>
@@ -373,6 +393,7 @@
             }
         </div>
     </section>
+    }
 
     @if (ShowMarkRoleSheet && MarkSheetBill is not null)
     {

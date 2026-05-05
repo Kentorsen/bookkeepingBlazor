@@ -37,7 +37,10 @@
             clearHash: function () { history.replaceState(null, "", window.location.pathname + window.location.search); },
             setItem: (key, value) => localStorage.setItem(key, value),
             getItem: (key) => localStorage.getItem(key),
-            removeItem: (key) => localStorage.removeItem(key)
+            removeItem: (key) => localStorage.removeItem(key),
+            setSessionItem: (key, value) => sessionStorage.setItem(key, value),
+            getSessionItem: (key) => sessionStorage.getItem(key),
+            removeSessionItem: (key) => sessionStorage.removeItem(key)
         };
     </script>
 </body>

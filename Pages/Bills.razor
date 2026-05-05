@@ -54,6 +54,10 @@
         {
             await HomeViewRef.ToggleFilterModeFromShellAsync();
         }
+        else if (ActivePanel == ShellPanel.More)
+        {
+            await HomeViewRef.ToggleMoreModeFromShellAsync();
+        }
 
         ActivePanel = ShellPanel.Stats;
         await HomeViewRef.ShowShellToastAsync("统计画面后续接");
@@ -71,6 +75,10 @@
 
         if (ActivePanel != ShellPanel.None)
         {
+            if (ActivePanel == ShellPanel.More)
+            {
+                await HomeViewRef.ToggleMoreModeFromShellAsync();
+            }
             ActivePanel = ShellPanel.None;
         }
 
@@ -83,6 +91,7 @@
         if (HomeViewRef is null) return;
         if (ActivePanel == ShellPanel.More)
         {
+            await HomeViewRef.ToggleMoreModeFromShellAsync();
             ActivePanel = ShellPanel.None;
             return;
         }
@@ -91,8 +100,12 @@
         {
             await HomeViewRef.ToggleFilterModeFromShellAsync();
         }
+        else if (ActivePanel == ShellPanel.Stats)
+        {
+            ActivePanel = ShellPanel.None;
+        }
 
+        await HomeViewRef.ToggleMoreModeFromShellAsync();
         ActivePanel = ShellPanel.More;
-        await HomeViewRef.ShowShellToastAsync("更多功能后续接");
     }
 }

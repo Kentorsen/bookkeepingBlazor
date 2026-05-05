@@ -12,6 +12,12 @@ namespace BookkeepingBlazor.Services
 {
     public class SupabaseService
     {
+        private const string AccessTokenSessionKey = "sb-access-token";
+        private const string RefreshTokenStorageKey = "sb-refresh-token";
+        private const string SessionPolicyStorageKey = "sb-session-policy";
+        private const string LastActiveStorageKey = "sb-last-active";
+        private const string AllowedEmailRpcName = "is_allowed_email";
+
         private readonly string SupabaseUrl;
         private readonly string SupabaseAnonKey;
         private readonly HttpClient _http;
@@ -54,13 +60,13 @@ namespace BookkeepingBlazor.Services
                 if (!string.IsNullOrEmpty(token))
                 {
                     _cachedToken = token;
-                    await _js.InvokeVoidAsync("authHelper.setItem", "sb-token", token);
+                    await _js.InvokeVoidAsync("authHelper.setSessionItem", AccessTokenSessionKey, token);
                     await _js.InvokeVoidAsync("authHelper.clearHash"); // 把网址擦干净
                 }
             }
             else
             {
-                _cachedToken = await _js.InvokeAsync<string>("authHelper.getItem", "sb-token");
+                _cachedToken = await _js.InvokeAsync<string>("authHelper.getSessionItem", AccessTokenSessionKey);
             }
         }
 
@@ -77,16 +83,15 @@ namespace BookkeepingBlazor.Services
             // 1. 内存里没有，去硬盘 (localStorage) 找
             if (string.IsNullOrEmpty(_cachedToken))
             {
-                _cachedToken = await _js.InvokeAsync<string>("authHelper.getItem", "sb-token");
+                _cachedToken = await _js.InvokeAsync<string>("authHelper.getSessionItem", AccessTokenSessionKey);
             }
-            if (string.IsNullOrEmpty(_cachedToken)) return false;
-
-            // 💡 需求 2：检查距离上次打开 APP 是否超过了 7 天
-            var lastActiveStr = await _js.InvokeAsync<string>("authHelper.getItem", "sb-last-active");
+            
+            var lastActiveStr = await _js.InvokeAsync<string>("authHelper.getItem", LastActiveStorageKey);
             if (long.TryParse(lastActiveStr, out var lastActiveSec))
             {
                 var daysInactive = (DateTimeOffset.UtcNow.ToUnixTimeSeconds() - lastActiveSec) / 86400.0;
-                if (daysInactive > 7)
+                var maxDays = await GetRememberDaysAsync();
+                if (daysInactive > maxDays)
                 {
                     await LogoutAsync(); // 超过7天，强制清除登录状态
                     return false;
@@ -94,7 +99,12 @@ namespace BookkeepingBlazor.Services
             }
 
             // 更新本次活跃时间
-            await _js.InvokeVoidAsync("authHelper.setItem", "sb-last-active", DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString());
+            await _js.InvokeVoidAsync("authHelper.setItem", LastActiveStorageKey, DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString());
+
+            if (string.IsNullOrEmpty(_cachedToken))
+            {
+                return await TryRefreshTokenAsync();
+            }
 
             var request = new HttpRequestMessage(HttpMethod.Get, $"{SupabaseUrl}/auth/v1/user");
             ApplyAuthHeaders(request);
@@ -126,7 +136,13 @@ namespace BookkeepingBlazor.Services
 
         private async Task<bool> TryRefreshTokenAsync()
         {
-            var refreshToken = await _js.InvokeAsync<string>("authHelper.getItem", "sb-refresh");
+            if (!await IsSessionPolicyValidAsync())
+            {
+                await LogoutAsync();
+                return false;
+            }
+
+            var refreshToken = await _js.InvokeAsync<string>("authHelper.getItem", RefreshTokenStorageKey);
             if (string.IsNullOrEmpty(refreshToken)) return false;
 
             var payload = new { refresh_token = refreshToken };
@@ -149,8 +165,8 @@ namespace BookkeepingBlazor.Services
                 _cachedToken = doc.RootElement.GetProperty("access_token").GetString();
                 var newRefreshToken = doc.RootElement.GetProperty("refresh_token").GetString();
 
-                await _js.InvokeVoidAsync("authHelper.setItem", "sb-token", _cachedToken);
-                await _js.InvokeVoidAsync("authHelper.setItem", "sb-refresh", newRefreshToken);
+                await _js.InvokeVoidAsync("authHelper.setSessionItem", AccessTokenSessionKey, _cachedToken);
+                await _js.InvokeVoidAsync("authHelper.setItem", RefreshTokenStorageKey, newRefreshToken);
                 return true;
             }
             catch (Exception)
@@ -194,6 +210,11 @@ namespace BookkeepingBlazor.Services
         // 1. 发送 6 位数验证码
         public async Task SendOtpAsync(string email)
         {
+            if (!await IsAllowedUserEmailAsync(email))
+            {
+                throw new Exception("该邮箱不在允许登录名单内");
+            }
+
             var payload = new { email = email };
             var json = JsonSerializer.Serialize(payload);
 
@@ -210,8 +231,13 @@ namespace BookkeepingBlazor.Services
         }
 
         // 2. 拿着用户输入的验证码去校验
-        public async Task<string?> VerifyOtpAsync(string email, string token)
+        public async Task<string?> VerifyOtpAsync(string email, string token, int rememberDays)
         {
+            if (!await IsAllowedUserEmailAsync(email))
+            {
+                throw new Exception("该邮箱不在允许登录名单内");
+            }
+
             var payload = new { type = "email", email = email, token = token };
             var request = new HttpRequestMessage(HttpMethod.Post, $"{SupabaseUrl}/auth/v1/verify");
             request.Headers.Add("apikey", SupabaseAnonKey);
@@ -229,9 +255,10 @@ namespace BookkeepingBlazor.Services
             {
                 _cachedToken = accessToken;
                 // 💡 同时保存 token、refresh_token 和当前活跃时间戳
-                await _js.InvokeVoidAsync("authHelper.setItem", "sb-token", accessToken);
-                await _js.InvokeVoidAsync("authHelper.setItem", "sb-refresh", refreshToken);
-                await _js.InvokeVoidAsync("authHelper.setItem", "sb-last-active", DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString());
+                await _js.InvokeVoidAsync("authHelper.setSessionItem", AccessTokenSessionKey, accessToken);
+                await _js.InvokeVoidAsync("authHelper.setItem", RefreshTokenStorageKey, refreshToken);
+                await _js.InvokeVoidAsync("authHelper.setItem", LastActiveStorageKey, DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString());
+                await SaveSessionPolicyAsync(rememberDays);
             }
             return accessToken;
         }
@@ -239,10 +266,176 @@ namespace BookkeepingBlazor.Services
         public async Task LogoutAsync()
         {
             _cachedToken = null;
-            await _js.InvokeVoidAsync("authHelper.removeItem", "sb-token");
-            await _js.InvokeVoidAsync("authHelper.removeItem", "sb-refresh");
-            await _js.InvokeVoidAsync("authHelper.removeItem", "sb-last-active");
+            await _js.InvokeVoidAsync("authHelper.removeSessionItem", AccessTokenSessionKey);
+            await _js.InvokeVoidAsync("authHelper.removeItem", RefreshTokenStorageKey);
+            await _js.InvokeVoidAsync("authHelper.removeItem", SessionPolicyStorageKey);
+            await _js.InvokeVoidAsync("authHelper.removeItem", LastActiveStorageKey);
         }
+
+        public async Task<bool> IsAllowedUserEmailAsync(string email)
+        {
+            var normalizedEmail = NormalizeEmail(email);
+            if (string.IsNullOrEmpty(normalizedEmail))
+            {
+                return false;
+            }
+
+            var request = new HttpRequestMessage(HttpMethod.Post, $"{SupabaseUrl}/rest/v1/rpc/{AllowedEmailRpcName}");
+            request.Headers.Add("apikey", SupabaseAnonKey);
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", SupabaseAnonKey);
+            request.Content = new StringContent(
+                JsonSerializer.Serialize(new { p_email = normalizedEmail }),
+                Encoding.UTF8,
+                "application/json");
+
+            try
+            {
+                var response = await _http.SendAsync(request);
+                if (!response.IsSuccessStatusCode)
+                {
+                    return false;
+                }
+
+                var raw = await response.Content.ReadAsStringAsync();
+                if (string.IsNullOrWhiteSpace(raw))
+                {
+                    return false;
+                }
+
+                using var doc = JsonDocument.Parse(raw);
+                return doc.RootElement.ValueKind switch
+                {
+                    JsonValueKind.True => true,
+                    JsonValueKind.False => false,
+                    JsonValueKind.Array => TryReadBoolFromArray(doc.RootElement),
+                    JsonValueKind.Object => TryReadBoolFromObject(doc.RootElement),
+                    _ => false
+                };
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        public async Task<(string Email, string DisplayName)> GetCurrentUserProfileAsync()
+        {
+            var email = NormalizeEmail(await GetCurrentUserEmailAsync());
+            if (string.IsNullOrEmpty(email))
+            {
+                return (string.Empty, "未登录");
+            }
+
+            var users = await GetListAsync<AppUser>(
+                $"users?email=eq.{Uri.EscapeDataString(email)}&is_deleted=is.false&select=name,email");
+            var user = users.FirstOrDefault();
+            var displayName = string.IsNullOrWhiteSpace(user?.Name) ? email : user!.Name!.Trim();
+            return (email, displayName);
+        }
+
+        private async Task SaveSessionPolicyAsync(int rememberDays)
+        {
+            var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            var expiresAt = DateTimeOffset.UtcNow.AddDays(rememberDays).ToUnixTimeSeconds();
+            var policy = JsonSerializer.Serialize(new SessionPolicy(rememberDays, now, expiresAt));
+            await _js.InvokeVoidAsync("authHelper.setItem", SessionPolicyStorageKey, policy);
+        }
+
+        private async Task<int> GetRememberDaysAsync()
+        {
+            var raw = await _js.InvokeAsync<string>("authHelper.getItem", SessionPolicyStorageKey);
+            if (TryParseSessionPolicy(raw, out var policy))
+            {
+                return policy!.RememberDays;
+            }
+
+            return 7;
+        }
+
+        private async Task<bool> IsSessionPolicyValidAsync()
+        {
+            var raw = await _js.InvokeAsync<string>("authHelper.getItem", SessionPolicyStorageKey);
+            if (!TryParseSessionPolicy(raw, out var policy))
+            {
+                return false;
+            }
+
+            return DateTimeOffset.UtcNow.ToUnixTimeSeconds() <= policy!.ExpiresAtUnixSeconds;
+        }
+
+        private static bool TryParseSessionPolicy(string? raw, out SessionPolicy? policy)
+        {
+            policy = null;
+            if (string.IsNullOrWhiteSpace(raw))
+            {
+                return false;
+            }
+
+            try
+            {
+                var parsed = JsonSerializer.Deserialize<SessionPolicy>(raw);
+                if (parsed is null)
+                {
+                    return false;
+                }
+
+                if (parsed.RememberDays is not (7 or 30))
+                {
+                    return false;
+                }
+
+                policy = parsed;
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static string NormalizeEmail(string? email)
+        {
+            return email?.Trim().ToLowerInvariant() ?? string.Empty;
+        }
+
+        private static bool TryReadBoolFromArray(JsonElement root)
+        {
+            if (root.GetArrayLength() == 0)
+            {
+                return false;
+            }
+
+            var first = root[0];
+            return first.ValueKind switch
+            {
+                JsonValueKind.True => true,
+                JsonValueKind.False => false,
+                JsonValueKind.Object => TryReadBoolFromObject(first),
+                _ => false
+            };
+        }
+
+        private static bool TryReadBoolFromObject(JsonElement root)
+        {
+            if (root.TryGetProperty("is_allowed_email", out var direct))
+            {
+                return direct.ValueKind == JsonValueKind.True;
+            }
+
+            if (root.TryGetProperty("allowed", out var allowed))
+            {
+                return allowed.ValueKind == JsonValueKind.True;
+            }
+
+            if (root.TryGetProperty("result", out var result))
+            {
+                return result.ValueKind == JsonValueKind.True;
+            }
+
+            return false;
+        }
+
+        private sealed record SessionPolicy(int RememberDays, long IssuedAtUnixSeconds, long ExpiresAtUnixSeconds);
 
         private async Task<List<T>> GetListAsync<T>(string relativeUrl)
         {
