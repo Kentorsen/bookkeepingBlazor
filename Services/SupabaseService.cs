@@ -302,6 +302,18 @@ namespace BookkeepingBlazor.Services
                 "bills?select=*&is_deleted=is.false&order=bill_date.desc,id.desc");
         }
 
+        public Task<List<Bill>> GetBillsByMainCategoryAsync(long mainCategoryId)
+        {
+            return GetListAsync<Bill>(
+                $"bills?select=*&is_deleted=is.false&main_category_id=eq.{mainCategoryId}&order=bill_date.desc,created_at.desc,id.desc");
+        }
+
+        public Task<List<Bill>> GetBillsBySubCategoryAsync(long subCategoryId)
+        {
+            return GetListAsync<Bill>(
+                $"bills?select=*&is_deleted=is.false&sub_category_id=eq.{subCategoryId}&order=bill_date.desc,created_at.desc,id.desc");
+        }
+
         public Task<List<RoleInfo>> GetRolesAsync()
         {
             return GetListAsync<RoleInfo>(

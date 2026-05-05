@@ -145,8 +145,8 @@
 
     @if (ShowCatInputDialog)
     {
-        <div class="dialog-mask" @onclick="CloseCatInput"></div>
-        <div class="input-dialog">
+        <div class="dialog-mask @(ShowCategoryFixScreen ? "over-fix" : "")" @onclick="CloseCatInput"></div>
+        <div class="input-dialog @(ShowCategoryFixScreen ? "over-fix" : "")">
             <div class="dialog-title">@CatInputTitle</div>
             <input type="text" class="dialog-input" placeholder="请输入名称" @bind="CatInputName" />
             
@@ -164,6 +164,142 @@
     @if (ShowToastFlag)
     {
         <div class="toast-box">@ToastMessage</div>
+    }
+
+    @if (ShowCategoryFixScreen)
+    {
+        <div class="fix-screen-mask"></div>
+        <section class="fix-screen">
+            <header class="fix-header">
+                <div class="fix-title">删除前修正账单类别</div>
+                <div class="fix-subtitle">@FixScreenTitleText</div>
+            </header>
+
+            <div class="fix-toolbar">
+                <label class="fix-filter-toggle">
+                    <input type="checkbox" @bind="OnlyShowUnadjusted" />
+                    <span>仅显示未修正</span>
+                </label>
+                <button class="dialog-btn" @onclick="SelectAllFixBills">全选所有</button>
+                <button class="dialog-btn" @onclick="SelectAllUnfixedBills">全选未修改</button>
+                <button class="dialog-btn" @onclick="ClearFixSelection">清空选择</button>
+            </div>
+
+            <div class="fix-list">
+                @if (FixBills.Count == 0)
+                {
+                    <div class="fix-empty">没有检测到使用该类别的账单。</div>
+                }
+                else
+                {
+                    @foreach (var item in DisplayFixBills)
+                    {
+                        <label class="fix-item @(item.IsAdjusted ? "adjusted" : "")">
+                            <input type="checkbox"
+                                   checked="@item.IsSelected"
+                                   @onchange="e => ToggleFixSelection(item.BillId, e)" />
+                        <article class="fix-bill-card">
+                            <div class="fix-bill-main-top">
+                                <div class="fix-item-title">@GetFixBillTitle(item)</div>
+                                <div class="fix-item-amount @(item.IoType == 1 ? "expense" : "income")">@GetFixBillAmountText(item)</div>
+                            </div>
+                            <div class="fix-bill-category-line">
+                                <span class="fix-category-chip main">@GetFixMainCategoryName(item)</span>
+                                @if (item.SubCategoryId.HasValue && item.SubCategoryId.Value > 0)
+                                {
+                                    var subName = GetFixSubCategoryName(item);
+                                    @if (!string.IsNullOrWhiteSpace(subName))
+                                    {
+                                        <span class="fix-category-chip sub">@subName</span>
+                                    }
+                                }
+                            </div>
+                            <div class="fix-item-meta">
+                                <span>日期：@GetFixBillDateText(item)</span>
+                                <span>创建：@item.CreatedAt.ToString("yyyy/MM/dd")</span>
+                                </div>
+                        </article>
+                        </label>
+                    }
+                }
+            </div>
+
+            <footer class="fix-actions">
+                <button class="dialog-btn primary" @onclick="OpenFixCategoryPicker">修改类别</button>
+                <button class="dialog-btn" disabled="@(!CanCompleteCategoryDelete)" @onclick="CompleteCategoryDeleteAsync">完成</button>
+                <button class="dialog-btn" @onclick="CloseCategoryFixScreen">取消</button>
+            </footer>
+        </section>
+    }
+
+    @if (ShowFixCategoryPicker)
+    {
+        <div class="dialog-mask"></div>
+        <div class="input-dialog fix-picker-dialog">
+            <div class="dialog-title">批量修改到新类别</div>
+            <div class="fix-picker-hint">此步骤先展示画面，后续再接入真实保存逻辑。</div>
+            <div class="fix-picker-hint">再次点击已选中的类别按钮可查看全名</div>
+
+            <div class="fix-picker-section">
+                <div class="fix-picker-label">主类别（可新增）</div>
+                <div class="fix-chip-grid">
+                    @foreach (var cat in MainCategories.Where(c =>
+                        !c.IsDeleted &&
+                        c.Type == CurrentFixIoType &&
+                        !(PendingDeleteIsMainCategory && c.Id == PendingDeleteMainCategoryId)))
+                    {
+                        <button class="chip small @(FixTargetMainCategoryId == cat.Id ? "active" : "")"
+                                @onclick="() => OnFixMainCategoryClick(cat.Id, cat.Name ?? string.Empty)"
+                                title="@cat.Name">
+                            @cat.Name
+                        </button>
+                    }
+                    <button class="chip small chip-add" @onclick="OpenAddMainCategory">+ 新增</button>
+                </div>
+            </div>
+
+            <div class="fix-picker-section">
+                <div class="fix-picker-label">子类别（可新增）</div>
+                <div class="fix-chip-grid">
+                    @if (FixTargetMainCategoryId > 0)
+                    {
+                        @foreach (var sub in SubCategories.Where(s =>
+                            !s.IsDeleted &&
+                            s.MainCategoryId == FixTargetMainCategoryId &&
+                            !(PendingDeleteSubCategoryId.HasValue && s.Id == PendingDeleteSubCategoryId.Value)))
+                        {
+                            <button class="chip small @(FixTargetSubCategoryId == sub.Id ? "active" : "")"
+                                    @onclick="() => OnFixSubCategoryClick(sub.Id, sub.Name ?? string.Empty)"
+                                    title="@sub.Name">
+                                @sub.Name
+                            </button>
+                        }
+                        <button class="chip small chip-add" @onclick="() => OpenAddSubCategory(FixTargetMainCategoryId)">+ 新增</button>
+                    }
+                    else
+                    {
+                        <span class="fix-picker-hint">请先选择主类别</span>
+                    }
+                </div>
+            </div>
+
+            <div class="dialog-footer">
+                <button class="dialog-btn" @onclick="CloseFixCategoryPicker">取消</button>
+                <button class="dialog-btn primary" @onclick="ApplyFixCategoryPreview">保存（预览）</button>
+            </div>
+        </div>
+    }
+
+    @if (ShowCategoryNamePreviewDialog)
+    {
+        <div class="dialog-mask category-name-preview-mask"></div>
+        <div class="input-dialog category-name-preview-dialog">
+            <div class="dialog-title">类别全名</div>
+            <div class="category-name-preview-text">@CategoryNamePreviewText</div>
+            <div class="dialog-footer">
+                <button class="dialog-btn primary" @onclick="CloseCategoryNamePreviewDialog">返回</button>
+            </div>
+        </div>
     }
 </div>
 
@@ -188,9 +324,45 @@
     private int CatInputMode = 0;
     private long EditingCatId = 0;
     private long TargetMainCatId = 0;
+    private bool ShowCategoryFixScreen;
+    private bool ShowFixCategoryPicker;
+    private bool PendingDeleteIsMainCategory;
+    private long PendingDeleteMainCategoryId;
+    private long? PendingDeleteSubCategoryId;
+    private string PendingDeleteCategoryName = "";
+    private short CurrentFixIoType = 1;
+    private long FixTargetMainCategoryId;
+    private long? FixTargetSubCategoryId;
+    private bool OnlyShowUnadjusted;
+    private bool ShowCategoryNamePreviewDialog;
+    private string CategoryNamePreviewText = "";
+    private List<CategoryFixBillItem> FixBills = new();
 
     /// <summary>金额输入框展示用；新增时为空，保存前解析到 Model.Amount。</summary>
     private string AmountInput = "";
+
+    private sealed class CategoryFixBillItem
+    {
+        public long BillId { get; set; }
+        public DateTime? BillDate { get; set; }
+        public DateTime CreatedAt { get; set; }
+        public decimal Amount { get; set; }
+        public short IoType { get; set; }
+        public string? Title { get; set; }
+        public long MainCategoryId { get; set; }
+        public long? SubCategoryId { get; set; }
+        public bool IsSelected { get; set; }
+        public bool IsAdjusted { get; set; }
+    }
+
+    private IEnumerable<CategoryFixBillItem> DisplayFixBills =>
+        OnlyShowUnadjusted ? FixBills.Where(x => !x.IsAdjusted) : FixBills;
+
+    private bool CanCompleteCategoryDelete =>
+        FixBills.Count == 0 || FixBills.All(x => x.IsAdjusted);
+
+    private string FixScreenTitleText =>
+        $"类别「{PendingDeleteCategoryName}」已被 {FixBills.Count} 条账单使用，请先修正。";
 
     protected override async Task OnInitializedAsync()
     {
@@ -414,10 +586,33 @@
 
     private async Task DeleteCurrentCategory()
     {
+        if (CatInputMode != 2 && CatInputMode != 4) return;
+
+        var deleteName = CatInputName.Trim();
+
         try
         {
             if (CatInputMode == 2)
             {
+                var allBills = await Supabase.GetAllBillsAsync();
+                var usedBills = allBills.Where(b => b.MainCategoryId == EditingCatId).ToList();
+                if (usedBills.Count > 0)
+                {
+                    var hasUsage = await JS.InvokeAsync<bool>("confirm", $"类别「{deleteName}」已被 {usedBills.Count} 条账单使用，需要先修正账单后才能删除。是否前往修正页面？");
+                    if (!hasUsage) return;
+                    OpenCategoryFixScreen(
+                        isMainCategory: true,
+                        mainCategoryId: EditingCatId,
+                        subCategoryId: null,
+                        categoryName: deleteName,
+                        ioType: Model.IoType,
+                        bills: usedBills);
+                    return;
+                }
+
+                var firstConfirm = await JS.InvokeAsync<bool>("confirm", $"确认删除类别「{deleteName}」吗？");
+                if (!firstConfirm) return;
+
                 await Supabase.SoftDeleteMainCategoryAsync(EditingCatId);
                 await Supabase.SoftDeleteSubCategoriesByMainIdAsync(EditingCatId);
                 var cat = MainCategories.FirstOrDefault(c => c.Id == EditingCatId);
@@ -428,6 +623,25 @@
             }
             else if (CatInputMode == 4)
             {
+                var allBills = await Supabase.GetAllBillsAsync();
+                var usedBills = allBills.Where(b => b.SubCategoryId.HasValue && b.SubCategoryId.Value == EditingCatId).ToList();
+                if (usedBills.Count > 0)
+                {
+                    var hasUsage = await JS.InvokeAsync<bool>("confirm", $"类别「{deleteName}」已被 {usedBills.Count} 条账单使用，需要先修正账单后才能删除。是否前往修正页面？");
+                    if (!hasUsage) return;
+                    OpenCategoryFixScreen(
+                        isMainCategory: false,
+                        mainCategoryId: TargetMainCatId,
+                        subCategoryId: EditingCatId,
+                        categoryName: deleteName,
+                        ioType: Model.IoType,
+                        bills: usedBills);
+                    return;
+                }
+
+                var firstConfirm = await JS.InvokeAsync<bool>("confirm", $"确认删除类别「{deleteName}」吗？");
+                if (!firstConfirm) return;
+
                 await Supabase.SoftDeleteSubCategoryAsync(EditingCatId);
                 var sub = SubCategories.FirstOrDefault(s => s.Id == EditingCatId);
                 if (sub != null) sub.IsDeleted = true;
@@ -436,5 +650,166 @@
         }
         catch (Exception ex) { ShowToast("删除失败: " + ex.Message); }
         CloseCatInput();
+    }
+
+    private void OpenCategoryFixScreen(bool isMainCategory, long mainCategoryId, long? subCategoryId, string categoryName, short ioType, List<Bill> bills)
+    {
+        PendingDeleteIsMainCategory = isMainCategory;
+        PendingDeleteMainCategoryId = mainCategoryId;
+        PendingDeleteSubCategoryId = subCategoryId;
+        PendingDeleteCategoryName = categoryName;
+        CurrentFixIoType = ioType;
+        FixTargetMainCategoryId = 0;
+        FixTargetSubCategoryId = null;
+        OnlyShowUnadjusted = false;
+        FixBills = bills.Select(b => new CategoryFixBillItem
+        {
+            BillId = b.Id,
+            BillDate = b.BillDate,
+            CreatedAt = b.CreatedAt,
+            Amount = b.Amount,
+            IoType = b.IoType,
+            Title = b.Title,
+            MainCategoryId = b.MainCategoryId,
+            SubCategoryId = b.SubCategoryId
+        }).ToList();
+        ShowCategoryFixScreen = true;
+        ShowCatInputDialog = false;
+    }
+
+    private void CloseCategoryFixScreen()
+    {
+        ShowCategoryFixScreen = false;
+        ShowFixCategoryPicker = false;
+        PendingDeleteIsMainCategory = false;
+        PendingDeleteMainCategoryId = 0;
+        PendingDeleteSubCategoryId = null;
+        PendingDeleteCategoryName = "";
+        OnlyShowUnadjusted = false;
+        FixBills.Clear();
+    }
+
+    private void ToggleFixSelection(long billId, ChangeEventArgs e)
+    {
+        var selected = e.Value?.ToString()?.Equals("true", StringComparison.OrdinalIgnoreCase) == true;
+        var item = FixBills.FirstOrDefault(x => x.BillId == billId);
+        if (item is null) return;
+        item.IsSelected = selected;
+    }
+
+    private void SelectAllFixBills()
+    {
+        foreach (var item in FixBills)
+        {
+            item.IsSelected = true;
+        }
+    }
+
+    private void SelectAllUnfixedBills()
+    {
+        foreach (var item in FixBills)
+        {
+            item.IsSelected = !item.IsAdjusted;
+        }
+    }
+
+    private void ClearFixSelection()
+    {
+        foreach (var item in FixBills)
+        {
+            item.IsSelected = false;
+        }
+    }
+
+    private void OpenFixCategoryPicker()
+    {
+        if (!FixBills.Any(x => x.IsSelected))
+        {
+            ShowToast("至少选择一条账单");
+            return;
+        }
+        ShowFixCategoryPicker = true;
+    }
+
+    private void CloseFixCategoryPicker()
+    {
+        ShowFixCategoryPicker = false;
+    }
+
+    private void OnFixMainCategoryClick(long id, string name)
+    {
+        if (FixTargetMainCategoryId == id)
+        {
+            OpenCategoryNamePreviewDialog(name);
+            return;
+        }
+        FixTargetMainCategoryId = id;
+        FixTargetSubCategoryId = null;
+    }
+
+    private void OnFixSubCategoryClick(long id, string name)
+    {
+        if (FixTargetSubCategoryId == id)
+        {
+            OpenCategoryNamePreviewDialog(name);
+            return;
+        }
+        FixTargetSubCategoryId = id;
+    }
+
+    private void OpenCategoryNamePreviewDialog(string fullName)
+    {
+        CategoryNamePreviewText = string.IsNullOrWhiteSpace(fullName) ? "-" : fullName;
+        ShowCategoryNamePreviewDialog = true;
+    }
+
+    private void CloseCategoryNamePreviewDialog()
+    {
+        ShowCategoryNamePreviewDialog = false;
+        CategoryNamePreviewText = "";
+    }
+
+    private void ApplyFixCategoryPreview()
+    {
+        if (FixTargetMainCategoryId <= 0)
+        {
+            ShowToast("请先选择主类别");
+            return;
+        }
+
+        foreach (var item in FixBills.Where(x => x.IsSelected))
+        {
+            item.IsAdjusted = true;
+            item.MainCategoryId = FixTargetMainCategoryId;
+            item.SubCategoryId = FixTargetSubCategoryId;
+            item.IsSelected = false;
+        }
+
+        ShowFixCategoryPicker = false;
+        ShowToast("已标记为已修正（预览）");
+    }
+
+    private Task CompleteCategoryDeleteAsync()
+    {
+        ShowToast("下一步会接入 RPC 正式删除逻辑");
+        return Task.CompletedTask;
+    }
+
+    private string GetFixBillTitle(CategoryFixBillItem item) =>
+        string.IsNullOrWhiteSpace(item.Title) ? "未命名账单" : item.Title!;
+
+    private string GetFixBillDateText(CategoryFixBillItem item) =>
+        item.BillDate.HasValue ? item.BillDate.Value.ToString("yyyy/MM/dd") : "-";
+
+    private string GetFixBillAmountText(CategoryFixBillItem item) =>
+        $"{(item.IoType == 1 ? "-" : "+")}{item.Amount:0.##}";
+
+    private string GetFixMainCategoryName(CategoryFixBillItem item) =>
+        MainCategories.FirstOrDefault(x => x.Id == item.MainCategoryId)?.Name ?? "未分类";
+
+    private string? GetFixSubCategoryName(CategoryFixBillItem item)
+    {
+        if (!item.SubCategoryId.HasValue || item.SubCategoryId.Value <= 0) return null;
+        return SubCategories.FirstOrDefault(x => x.Id == item.SubCategoryId.Value)?.Name;
     }
 }
