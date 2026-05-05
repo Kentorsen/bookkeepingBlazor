@@ -427,6 +427,11 @@ namespace BookkeepingBlazor.Services
             return PatchAsync($"main_categories?id=eq.{id}", new { is_deleted = true });
         }
 
+        public Task RestoreMainCategoryAsync(long id)
+        {
+            return PatchAsync($"main_categories?id=eq.{id}", new { is_deleted = false });
+        }
+
         // --- 子类别 ---
         public Task<SubCategoryInfo?> InsertSubCategoryAsync(SubCategoryInfo cat)
         {
@@ -449,6 +454,11 @@ namespace BookkeepingBlazor.Services
         {
             // 删除了 updated_at 字段
             return PatchAsync($"sub_categories?id=eq.{id}", new { is_deleted = true });
+        }
+
+        public Task RestoreSubCategoryAsync(long id)
+        {
+            return PatchAsync($"sub_categories?id=eq.{id}", new { is_deleted = false });
         }
 
         public Task SoftDeleteSubCategoriesByMainIdAsync(long mainCategoryId)

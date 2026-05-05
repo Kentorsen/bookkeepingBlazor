@@ -554,30 +554,102 @@
 
     private async Task ConfirmCatInput()
     {
-        if (string.IsNullOrWhiteSpace(CatInputName)) { ShowToast("名称不能为空"); return; }
+        var normalizedName = (CatInputName ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(normalizedName)) { ShowToast("名称不能为空"); return; }
+
         try
         {
             if (CatInputMode == 1)
             {
-                var newCat = await Supabase.InsertMainCategoryAsync(new MainCategoryInfo { Name = CatInputName, Type = Model.IoType });
+                var activeDuplicate = MainCategories.FirstOrDefault(c =>
+                    !c.IsDeleted &&
+                    c.Type == Model.IoType &&
+                    string.Equals((c.Name ?? string.Empty).Trim(), normalizedName, StringComparison.OrdinalIgnoreCase));
+                if (activeDuplicate is not null)
+                {
+                    ShowToast($"主分类「{normalizedName}」已存在");
+                    return;
+                }
+
+                var deletedSameNames = MainCategories
+                    .Where(c =>
+                        c.IsDeleted &&
+                        c.Type == Model.IoType &&
+                        string.Equals((c.Name ?? string.Empty).Trim(), normalizedName, StringComparison.OrdinalIgnoreCase))
+                    .OrderByDescending(c => c.Id)
+                    .ToList();
+
+                if (deletedSameNames.Count > 0)
+                {
+                    var defaultMerge = deletedSameNames[0];
+                    var mergeMsg = $"发现 {deletedSameNames.Count} 个已删除同名主类别，默认将合并到最近删除的：{defaultMerge.Name}（ID:{defaultMerge.Id}）。\n确定按默认合并吗？\n（取消=不合并，创建新类别）";
+                    var useMerge = await JS.InvokeAsync<bool>("confirm", mergeMsg);
+                    if (useMerge)
+                    {
+                        await Supabase.RestoreMainCategoryAsync(defaultMerge.Id);
+                        defaultMerge.IsDeleted = false;
+                        defaultMerge.Name = normalizedName;
+                        Model.MainCategoryId = defaultMerge.Id;
+                        ShowToast("已合并到已删除主分类");
+                        CloseCatInput();
+                        return;
+                    }
+                }
+
+                var newCat = await Supabase.InsertMainCategoryAsync(new MainCategoryInfo { Name = normalizedName, Type = Model.IoType });
                 if (newCat != null) { MainCategories.Add(newCat); Model.MainCategoryId = newCat.Id; ShowToast("已新增主分类"); }
             }
             else if (CatInputMode == 2)
             {
-                await Supabase.UpdateMainCategoryAsync(EditingCatId, CatInputName);
+                await Supabase.UpdateMainCategoryAsync(EditingCatId, normalizedName);
                 var cat = MainCategories.FirstOrDefault(c => c.Id == EditingCatId);
-                if (cat != null) cat.Name = CatInputName; ShowToast("已修改主分类");
+                if (cat != null) cat.Name = normalizedName; ShowToast("已修改主分类");
             }
             else if (CatInputMode == 3)
             {
-                var newSub = await Supabase.InsertSubCategoryAsync(new SubCategoryInfo { MainCategoryId = TargetMainCatId, Name = CatInputName });
+                var activeDuplicate = SubCategories.FirstOrDefault(s =>
+                    !s.IsDeleted &&
+                    s.MainCategoryId == TargetMainCatId &&
+                    string.Equals((s.Name ?? string.Empty).Trim(), normalizedName, StringComparison.OrdinalIgnoreCase));
+                if (activeDuplicate is not null)
+                {
+                    ShowToast($"子分类「{normalizedName}」已存在");
+                    return;
+                }
+
+                var deletedSameNames = SubCategories
+                    .Where(s =>
+                        s.IsDeleted &&
+                        s.MainCategoryId == TargetMainCatId &&
+                        string.Equals((s.Name ?? string.Empty).Trim(), normalizedName, StringComparison.OrdinalIgnoreCase))
+                    .OrderByDescending(s => s.Id)
+                    .ToList();
+
+                if (deletedSameNames.Count > 0)
+                {
+                    var defaultMerge = deletedSameNames[0];
+                    var mergeMsg = $"发现 {deletedSameNames.Count} 个已删除同名子类别，默认将合并到最近删除的：{defaultMerge.Name}（ID:{defaultMerge.Id}）。\n确定按默认合并吗？\n（取消=不合并，创建新类别）";
+                    var useMerge = await JS.InvokeAsync<bool>("confirm", mergeMsg);
+                    if (useMerge)
+                    {
+                        await Supabase.RestoreSubCategoryAsync(defaultMerge.Id);
+                        defaultMerge.IsDeleted = false;
+                        defaultMerge.Name = normalizedName;
+                        Model.SubCategoryId = defaultMerge.Id;
+                        ShowToast("已合并到已删除子分类");
+                        CloseCatInput();
+                        return;
+                    }
+                }
+
+                var newSub = await Supabase.InsertSubCategoryAsync(new SubCategoryInfo { MainCategoryId = TargetMainCatId, Name = normalizedName });
                 if (newSub != null) { SubCategories.Add(newSub); Model.SubCategoryId = newSub.Id; ShowToast("已新增子分类"); }
             }
             else if (CatInputMode == 4)
             {
-                await Supabase.UpdateSubCategoryAsync(EditingCatId, CatInputName);
+                await Supabase.UpdateSubCategoryAsync(EditingCatId, normalizedName);
                 var sub = SubCategories.FirstOrDefault(s => s.Id == EditingCatId);
-                if (sub != null) sub.Name = CatInputName; ShowToast("已修改子分类");
+                if (sub != null) sub.Name = normalizedName; ShowToast("已修改子分类");
             }
         }
         catch (Exception ex) { ShowToast("操作失败: " + ex.Message); }
@@ -614,12 +686,11 @@
                 if (!firstConfirm) return;
 
                 await Supabase.SoftDeleteMainCategoryAsync(EditingCatId);
-                await Supabase.SoftDeleteSubCategoriesByMainIdAsync(EditingCatId);
                 var cat = MainCategories.FirstOrDefault(c => c.Id == EditingCatId);
                 if (cat != null) cat.IsDeleted = true;
-                var relatedSubs = SubCategories.Where(s => s.MainCategoryId == EditingCatId).ToList();
-                foreach (var sub in relatedSubs) { sub.IsDeleted = true; }
-                Model.MainCategoryId = 0; Model.SubCategoryId = null; ShowToast("已删除主分类及其子分类");
+                Model.MainCategoryId = 0;
+                Model.SubCategoryId = null;
+                ShowToast("已删除主分类");
             }
             else if (CatInputMode == 4)
             {
