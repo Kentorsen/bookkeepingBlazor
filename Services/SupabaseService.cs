@@ -13,6 +13,11 @@ namespace BookkeepingBlazor.Services
     public class SupabaseService
     {
         private const string AccessTokenSessionKey = "sb-access-token";
+        /// <summary>
+        /// iOS/Android「添加到主屏幕」使用独立 WebView；sessionStorage 在进程被杀死后常被清空。
+        /// 在 standalone 模式下同步一份 access_token 到 localStorage，便于冷启动后用 refresh 续期。
+        /// </summary>
+        private const string AccessTokenPersistedKey = "sb-access-token-persisted";
         private const string RefreshTokenStorageKey = "sb-refresh-token";
         private const string SessionPolicyStorageKey = "sb-session-policy";
         private const string LastActiveStorageKey = "sb-last-active";
@@ -60,13 +65,13 @@ namespace BookkeepingBlazor.Services
                 if (!string.IsNullOrEmpty(token))
                 {
                     _cachedToken = token;
-                    await _js.InvokeVoidAsync("authHelper.setSessionItem", AccessTokenSessionKey, token);
+                    await PersistAccessTokenAsync(token);
                     await _js.InvokeVoidAsync("authHelper.clearHash"); // 把网址擦干净
                 }
             }
             else
             {
-                _cachedToken = await _js.InvokeAsync<string>("authHelper.getSessionItem", AccessTokenSessionKey);
+                _cachedToken = await ReadStoredAccessTokenAsync();
             }
         }
 
@@ -83,7 +88,7 @@ namespace BookkeepingBlazor.Services
             // 1. 内存里没有，去硬盘 (localStorage) 找
             if (string.IsNullOrEmpty(_cachedToken))
             {
-                _cachedToken = await _js.InvokeAsync<string>("authHelper.getSessionItem", AccessTokenSessionKey);
+                _cachedToken = await ReadStoredAccessTokenAsync();
             }
             
             var lastActiveStr = await _js.InvokeAsync<string>("authHelper.getItem", LastActiveStorageKey);
@@ -136,14 +141,18 @@ namespace BookkeepingBlazor.Services
 
         private async Task<bool> TryRefreshTokenAsync()
         {
-            if (!await IsSessionPolicyValidAsync())
+            var refreshToken = await _js.InvokeAsync<string>("authHelper.getItem", RefreshTokenStorageKey);
+            if (string.IsNullOrEmpty(refreshToken))
+            {
+                return false;
+            }
+
+            // 有 refresh 时允许尝试续期；策略缺失多为旧数据或存储差异，不应直接清空 refresh
+            if (!await IsSessionPolicyValidForRefreshAsync())
             {
                 await LogoutAsync();
                 return false;
             }
-
-            var refreshToken = await _js.InvokeAsync<string>("authHelper.getItem", RefreshTokenStorageKey);
-            if (string.IsNullOrEmpty(refreshToken)) return false;
 
             var payload = new { refresh_token = refreshToken };
             var request = new HttpRequestMessage(HttpMethod.Post, $"{SupabaseUrl}/auth/v1/token?grant_type=refresh_token");
@@ -165,7 +174,7 @@ namespace BookkeepingBlazor.Services
                 _cachedToken = doc.RootElement.GetProperty("access_token").GetString();
                 var newRefreshToken = doc.RootElement.GetProperty("refresh_token").GetString();
 
-                await _js.InvokeVoidAsync("authHelper.setSessionItem", AccessTokenSessionKey, _cachedToken);
+                await PersistAccessTokenAsync(_cachedToken);
                 await _js.InvokeVoidAsync("authHelper.setItem", RefreshTokenStorageKey, newRefreshToken);
                 return true;
             }
@@ -255,7 +264,7 @@ namespace BookkeepingBlazor.Services
             {
                 _cachedToken = accessToken;
                 // 💡 同时保存 token、refresh_token 和当前活跃时间戳
-                await _js.InvokeVoidAsync("authHelper.setSessionItem", AccessTokenSessionKey, accessToken);
+                await PersistAccessTokenAsync(accessToken);
                 await _js.InvokeVoidAsync("authHelper.setItem", RefreshTokenStorageKey, refreshToken);
                 await _js.InvokeVoidAsync("authHelper.setItem", LastActiveStorageKey, DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString());
                 await SaveSessionPolicyAsync(rememberDays);
@@ -267,6 +276,7 @@ namespace BookkeepingBlazor.Services
         {
             _cachedToken = null;
             await _js.InvokeVoidAsync("authHelper.removeSessionItem", AccessTokenSessionKey);
+            await _js.InvokeVoidAsync("authHelper.removeItem", AccessTokenPersistedKey);
             await _js.InvokeVoidAsync("authHelper.removeItem", RefreshTokenStorageKey);
             await _js.InvokeVoidAsync("authHelper.removeItem", SessionPolicyStorageKey);
             await _js.InvokeVoidAsync("authHelper.removeItem", LastActiveStorageKey);
@@ -361,6 +371,62 @@ namespace BookkeepingBlazor.Services
             }
 
             return DateTimeOffset.UtcNow.ToUnixTimeSeconds() <= policy!.ExpiresAtUnixSeconds;
+        }
+
+        /// <summary>
+        /// 用于 refresh：策略缺失时仍允许用 refresh_token 续期；策略存在且已过期则拒绝。
+        /// </summary>
+        private async Task<bool> IsSessionPolicyValidForRefreshAsync()
+        {
+            var raw = await _js.InvokeAsync<string>("authHelper.getItem", SessionPolicyStorageKey);
+            if (!TryParseSessionPolicy(raw, out var policy))
+            {
+                return true;
+            }
+
+            return DateTimeOffset.UtcNow.ToUnixTimeSeconds() <= policy!.ExpiresAtUnixSeconds;
+        }
+
+        private async Task<bool> IsStandalonePwaAsync()
+        {
+            try
+            {
+                return await _js.InvokeAsync<bool>("authHelper.isStandalonePwa");
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private async Task<string?> ReadStoredAccessTokenAsync()
+        {
+            var fromSession = await _js.InvokeAsync<string>("authHelper.getSessionItem", AccessTokenSessionKey);
+            if (!string.IsNullOrEmpty(fromSession))
+            {
+                return fromSession;
+            }
+
+            if (await IsStandalonePwaAsync())
+            {
+                return await _js.InvokeAsync<string>("authHelper.getItem", AccessTokenPersistedKey);
+            }
+
+            return null;
+        }
+
+        private async Task PersistAccessTokenAsync(string? accessToken)
+        {
+            if (string.IsNullOrEmpty(accessToken))
+            {
+                return;
+            }
+
+            await _js.InvokeVoidAsync("authHelper.setSessionItem", AccessTokenSessionKey, accessToken);
+            if (await IsStandalonePwaAsync())
+            {
+                await _js.InvokeVoidAsync("authHelper.setItem", AccessTokenPersistedKey, accessToken);
+            }
         }
 
         private static bool TryParseSessionPolicy(string? raw, out SessionPolicy? policy)

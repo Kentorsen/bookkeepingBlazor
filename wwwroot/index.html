@@ -40,7 +40,15 @@
             removeItem: (key) => localStorage.removeItem(key),
             setSessionItem: (key, value) => sessionStorage.setItem(key, value),
             getSessionItem: (key) => sessionStorage.getItem(key),
-            removeSessionItem: (key) => sessionStorage.removeItem(key)
+            removeSessionItem: (key) => sessionStorage.removeItem(key),
+            isStandalonePwa: function () {
+                try {
+                    return window.matchMedia("(display-mode: standalone)").matches
+                        || window.navigator.standalone === true;
+                } catch (e) {
+                    return false;
+                }
+            }
         };
     </script>
 </body>
