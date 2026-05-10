@@ -46,6 +46,7 @@
         if (HomeViewRef is null) return;
         if (ActivePanel == ShellPanel.Stats)
         {
+            await HomeViewRef.ToggleStatsModeFromShellAsync();
             ActivePanel = ShellPanel.None;
             return;
         }
@@ -60,7 +61,7 @@
         }
 
         ActivePanel = ShellPanel.Stats;
-        await HomeViewRef.ShowShellToastAsync("统计画面后续接");
+        await HomeViewRef.ToggleStatsModeFromShellAsync();
     }
 
     private async Task ShowFilterPlaceholderAsync()
@@ -78,6 +79,10 @@
             if (ActivePanel == ShellPanel.More)
             {
                 await HomeViewRef.ToggleMoreModeFromShellAsync();
+            }
+            else if (ActivePanel == ShellPanel.Stats)
+            {
+                await HomeViewRef.ToggleStatsModeFromShellAsync();
             }
             ActivePanel = ShellPanel.None;
         }
@@ -102,7 +107,7 @@
         }
         else if (ActivePanel == ShellPanel.Stats)
         {
-            ActivePanel = ShellPanel.None;
+            await HomeViewRef.ToggleStatsModeFromShellAsync();
         }
 
         await HomeViewRef.ToggleMoreModeFromShellAsync();

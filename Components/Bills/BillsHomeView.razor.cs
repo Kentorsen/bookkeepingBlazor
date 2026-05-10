@@ -27,7 +27,7 @@ public partial class BillsHomeView : IDisposable
     private enum PeriodMode { Month, Day }
     private enum SummaryPage { Expense, Income }
     private enum SwipeSide { None, Left, Right }
-    private enum ScreenMode { Home, Filter, More }
+    private enum ScreenMode { Home, Filter, More, Stats }
     private enum FilterTab { Condition, Marked }
     private enum IoFilter { Expense, Income, All }
     private enum TriState { No, Yes, All }
@@ -250,6 +250,23 @@ public partial class BillsHomeView : IDisposable
         await LoadProfileAsync();
         CloseSwipeImmediate();
         StateHasChanged();
+    }
+
+    public Task ToggleStatsModeFromShellAsync()
+    {
+        if (CurrentScreenMode == ScreenMode.Stats)
+        {
+            CurrentScreenMode = ScreenMode.Home;
+        }
+        else
+        {
+            CurrentScreenMode = ScreenMode.Stats;
+            ShowPicker = false;
+        }
+
+        CloseSwipeImmediate();
+        StateHasChanged();
+        return Task.CompletedTask;
     }
 
     public async Task LogoutFromShellAsync()

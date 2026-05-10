@@ -1,6 +1,6 @@
 @using BookkeepingBlazor.Pages
 
-<div class="bill-app @(CurrentScreenMode == ScreenMode.Filter ? "filter-screen" : "") @(CurrentScreenMode == ScreenMode.More ? "more-screen" : "")">
+<div class="bill-app @(CurrentScreenMode == ScreenMode.Filter ? "filter-screen" : "") @(CurrentScreenMode == ScreenMode.More ? "more-screen" : "") @(CurrentScreenMode == ScreenMode.Stats ? "stats-screen" : "")">
     @if (CurrentScreenMode == ScreenMode.Home)
     {
         <section class="region1">
@@ -109,6 +109,12 @@
                     }
                 </div>
             }
+        </section>
+    }
+    else if (CurrentScreenMode == ScreenMode.Stats)
+    {
+        <section class="stats-mode-panel">
+            <BillsStatsPanel />
         </section>
     }
     else if (CurrentScreenMode == ScreenMode.More)
@@ -241,7 +247,7 @@
     </section>
     }
 
-    @if (CurrentScreenMode != ScreenMode.More)
+    @if (CurrentScreenMode != ScreenMode.More && CurrentScreenMode != ScreenMode.Stats)
     {
     <section class="region3">
         <div class="r3-head">

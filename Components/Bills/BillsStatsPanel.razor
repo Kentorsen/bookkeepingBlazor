@@ -1,0 +1,443 @@
+@* 统计页 UI 骨架：占位数据与交互状态，不接数据库 *@
+
+<div class="stats-root">
+    <section class="stats-card stats-interval-card">
+        <div class="stats-interval-grid">
+            <div class="stats-interval-left">
+                <div class="stats-interval-label-line">统计区间：</div>
+                <div class="stats-interval-date-line">@FormatRangeLine()</div>
+            </div>
+            <div class="stats-interval-right">
+                <button type="button" class="stats-link-btn" @onclick="OpenRangePicker">更改范围</button>
+            </div>
+        </div>
+    </section>
+
+    <section class="stats-card stats-tabs-card">
+        <div class="stats-seg-stack" role="presentation">
+            <div class="stats-seg stats-seg-2" role="tablist" aria-label="统计方式">
+                <button type="button"
+                        class="stats-seg-btn @(MethodTab == StatsMethodTab.Category ? "active" : "")"
+                        @onclick="@(() => MethodTab = StatsMethodTab.Category)">类别统计</button>
+                <button type="button"
+                        class="stats-seg-btn @(MethodTab == StatsMethodTab.Trend ? "active" : "")"
+                        @onclick="@(() => MethodTab = StatsMethodTab.Trend)">月趋势图</button>
+            </div>
+            <div class="stats-seg stats-seg-3 stats-seg-row2" role="tablist" aria-label="统计对象">
+                <button type="button"
+                        class="stats-seg-btn @(SelectedPersons.Contains(StatsPerson.Yiyi) ? "active" : "")"
+                        @onclick="@(() => TogglePerson(StatsPerson.Yiyi))">依依</button>
+                <button type="button"
+                        class="stats-seg-btn @(SelectedPersons.Contains(StatsPerson.Yiyi2) ? "active" : "")"
+                        @onclick="@(() => TogglePerson(StatsPerson.Yiyi2))">一一</button>
+                <button type="button"
+                        class="stats-seg-btn @(SelectedPersons.Contains(StatsPerson.Total) ? "active" : "")"
+                        @onclick="@(() => TogglePerson(StatsPerson.Total))">共计</button>
+            </div>
+        </div>
+    </section>
+
+    @if (UiShowEmptyState)
+    {
+        <section class="stats-card stats-result-empty">
+            <div class="stats-empty-msg">当前时间范围没有账单</div>
+        </section>
+    }
+    else
+    {
+        <section class="stats-card stats-overview-card">
+            <div class="stats-card-title">总览</div>
+            @foreach (var p in OrderedSelectedPersons())
+            {
+                <div class="stats-sub-block">
+                    <div class="stats-sub-title">@GetPersonTitle(p)</div>
+                    <div class="stats-metric-grid">
+                        <div>
+                            <div class="stats-metric-label">总支出</div>
+                            <div class="stats-metric-value expense">@MockExpense(p)</div>
+                        </div>
+                        <div>
+                            <div class="stats-metric-label">总收入</div>
+                            <div class="stats-metric-value income">@MockIncome(p)</div>
+                        </div>
+                        <div>
+                            <div class="stats-metric-label">结余</div>
+                            <div class="stats-metric-value @MockBalanceClass(p)">@MockBalance(p)</div>
+                        </div>
+                    </div>
+                </div>
+            }
+        </section>
+
+        @if (MethodTab == StatsMethodTab.Category)
+        {
+            @foreach (var p in OrderedSelectedPersons())
+            {
+                <section class="stats-card stats-detail-card">
+                    <div class="stats-detail-head">
+                        <div class="stats-card-title">类别统计 · @GetPersonTitle(p)</div>
+                        <label class="stats-io-switch">
+                            <span class="@(CategoryIoExpense ? "on" : "")">支出</span>
+                            <button type="button"
+                                    class="stats-io-toggle @(CategoryIoExpense ? "expense" : "income")"
+                                    @onclick="@(() => CategoryIoExpense = !CategoryIoExpense)"
+                                    aria-label="切换支出或收入"></button>
+                            <span class="@(!CategoryIoExpense ? "on" : "")">收入</span>
+                        </label>
+                    </div>
+                    @foreach (var row in MockCategoryRows(p))
+                    {
+                        <div class="stats-cat-block">
+                            <button type="button" class="stats-cat-main" @onclick="@(() => ToggleCatExpand(row.Key))">
+                                <span class="stats-cat-name">@row.Name</span>
+                                <span class="stats-cat-meta">@row.Amount · @row.Pct</span>
+                            </button>
+                            <div class="stats-bar-track">
+                                <div class="stats-bar-fill" style="width:@row.BarPct%"></div>
+                                <div class="stats-bar-label">@row.Amount · @row.Pct</div>
+                            </div>
+                            @if (ExpandedCategoryKeys.Contains(row.Key))
+                            {
+                                var subs = row.Subs.Length > 0
+                                    ? row.Subs
+                                    : new[] { new SubCatRow("无子类别", row.Amount, row.Pct, row.BarPct) };
+                                @foreach (var sub in subs)
+                                {
+                                    <div class="stats-cat-sub">
+                                        <span class="stats-cat-name">@sub.Name</span>
+                                        <span class="stats-cat-meta">@sub.Amount · @sub.Pct</span>
+                                        <div class="stats-bar-track stats-bar-sub">
+                                            <div class="stats-bar-fill" style="width:@sub.BarPct%"></div>
+                                            <div class="stats-bar-label">@sub.Amount · @sub.Pct</div>
+                                        </div>
+                                    </div>
+                                }
+                            }
+                        </div>
+                    }
+                </section>
+            }
+        }
+        else
+        {
+            @foreach (var p in OrderedSelectedPersons())
+            {
+                <section class="stats-card stats-detail-card">
+                    <div class="stats-detail-head">
+                        <div class="stats-card-title">月趋势图 · @GetPersonTitle(p)</div>
+                        <label class="stats-io-switch">
+                            <span class="@(TrendIoExpense ? "on" : "")">支出</span>
+                            <button type="button"
+                                    class="stats-io-toggle @(TrendIoExpense ? "expense" : "income")"
+                                    @onclick="@(() => TrendIoExpense = !TrendIoExpense)"
+                                    aria-label="切换支出或收入"></button>
+                            <span class="@(!TrendIoExpense ? "on" : "")">收入</span>
+                        </label>
+                    </div>
+                    <div class="stats-chart-placeholder">
+                        <svg class="stats-chart-svg" viewBox="0 0 320 120" preserveAspectRatio="none" aria-hidden="true">
+                            <defs>
+                                <linearGradient id="statsAreaGrad" x1="0" y1="0" x2="0" y2="1">
+                                    <stop offset="0%" stop-color="#ef9cb8" stop-opacity="0.35" />
+                                    <stop offset="100%" stop-color="#ef9cb8" stop-opacity="0" />
+                                </linearGradient>
+                            </defs>
+                            <polygon fill="url(#statsAreaGrad)" points="0,110 40,95 80,100 120,70 160,80 200,55 240,65 280,40 320,50 320,120 0,120" />
+                            <polyline fill="none" stroke="#d87a9a" stroke-width="2.5"
+                                      points="0,95 40,88 80,92 120,68 160,76 200,54 240,62 280,42 320,48" />
+                        </svg>
+                        <div class="stats-chart-caption">折线图占位（接数据后替换）</div>
+                    </div>
+                </section>
+            }
+        }
+    }
+</div>
+
+@if (ShowRangePicker)
+{
+    <div class="stats-picker-mask" @onclick="CloseRangePicker"></div>
+    <div class="stats-picker-panel" @onclick:stopPropagation="true">
+        <div class="stats-picker-title">选择统计区间</div>
+        <div class="stats-seg stats-seg-2 stats-picker-tabs">
+            <button type="button"
+                    class="stats-seg-btn @(RangePickerMode == StatsRangePickerMode.Year ? "active" : "")"
+                    @onclick="@(() => RangePickerMode = StatsRangePickerMode.Year)">按年度</button>
+            <button type="button"
+                    class="stats-seg-btn @(RangePickerMode == StatsRangePickerMode.Custom ? "active" : "")"
+                    @onclick="@(() => RangePickerMode = StatsRangePickerMode.Custom)">自定义范围</button>
+        </div>
+
+        @if (RangePickerMode == StatsRangePickerMode.Year)
+        {
+            <div class="stats-year-stepper">
+                <button type="button" class="stats-step-btn" @onclick="DecPickerYear" aria-label="上一年">−</button>
+                <div class="stats-year-value">@PickerYear 年</div>
+                <button type="button" class="stats-step-btn" @onclick="IncPickerYear" aria-label="下一年">＋</button>
+            </div>
+            <div class="stats-chip-row">
+                <button type="button" class="stats-chip" @onclick="PickThisYear">今年</button>
+                <button type="button" class="stats-chip" @onclick="PickLastYear">去年</button>
+            </div>
+        }
+        else
+        {
+            <div class="stats-date-row">
+                <span class="stats-date-label">开始</span>
+                <InputDate @bind-Value="DraftCustomStart" />
+            </div>
+            <div class="stats-date-row">
+                <span class="stats-date-label">结束</span>
+                <InputDate @bind-Value="DraftCustomEnd" />
+            </div>
+            <div class="stats-chip-wrap">
+                <button type="button" class="stats-chip" @onclick="PickThisMonthRange">本月</button>
+                <button type="button" class="stats-chip" @onclick="PickLastMonthRange">上月</button>
+                <button type="button" class="stats-chip" @onclick="PickLast7Days">最近7天</button>
+                <button type="button" class="stats-chip" @onclick="PickLast30Days">最近30天</button>
+                <button type="button" class="stats-chip" @onclick="PickAllRange">全部</button>
+            </div>
+        }
+
+        <div class="stats-picker-preview">@FormatRangeLineDraft()</div>
+        <div class="stats-picker-actions">
+            <button type="button" class="stats-btn light" @onclick="CloseRangePicker">取消</button>
+            <button type="button" class="stats-btn primary" @onclick="ConfirmRangePicker">确定</button>
+        </div>
+    </div>
+}
+
+@code {
+    /// <summary>占位：接数据后改为由查询结果驱动是否空状态。</summary>
+    private bool UiShowEmptyState => false;
+
+    private DateOnly StatsRangeStart = new(2026, 1, 1);
+    private DateOnly StatsRangeEnd = new(2026, 12, 31);
+
+    private bool ShowRangePicker;
+    private StatsRangePickerMode RangePickerMode = StatsRangePickerMode.Year;
+    private int PickerYear = 2026;
+    private DateOnly? DraftCustomStart = new(2026, 1, 1);
+    private DateOnly? DraftCustomEnd = new(2026, 12, 31);
+
+    private StatsMethodTab MethodTab = StatsMethodTab.Category;
+
+    private enum StatsPerson { Yiyi, Yiyi2, Total }
+    private enum StatsMethodTab { Category, Trend }
+    private enum StatsRangePickerMode { Year, Custom }
+
+    private readonly HashSet<StatsPerson> SelectedPersons = new() { StatsPerson.Total };
+
+    private bool CategoryIoExpense = true;
+    private bool TrendIoExpense = true;
+
+    private readonly HashSet<string> ExpandedCategoryKeys = new();
+
+    private void OpenRangePicker()
+    {
+        PickerYear = StatsRangeStart.Year;
+        DraftCustomStart = StatsRangeStart;
+        DraftCustomEnd = StatsRangeEnd;
+        RangePickerMode = StatsRangePickerMode.Year;
+        ShowRangePicker = true;
+    }
+
+    private void CloseRangePicker() => ShowRangePicker = false;
+
+    private void ConfirmRangePicker()
+    {
+        if (RangePickerMode == StatsRangePickerMode.Year)
+        {
+            StatsRangeStart = new DateOnly(PickerYear, 1, 1);
+            StatsRangeEnd = new DateOnly(PickerYear, 12, 31);
+        }
+        else
+        {
+            if (DraftCustomStart is { } s && DraftCustomEnd is { } e)
+            {
+                StatsRangeStart = s <= e ? s : e;
+                StatsRangeEnd = s <= e ? e : s;
+            }
+        }
+
+        ShowRangePicker = false;
+    }
+
+    private void DecPickerYear() => PickerYear--;
+    private void IncPickerYear() => PickerYear++;
+
+    private void PickThisYear()
+    {
+        var y = DateTime.Today.Year;
+        PickerYear = y;
+    }
+
+    private void PickLastYear()
+    {
+        var y = DateTime.Today.Year - 1;
+        PickerYear = y;
+    }
+
+    private void PickThisMonthRange()
+    {
+        var t = DateTime.Today;
+        DraftCustomStart = new DateOnly(t.Year, t.Month, 1);
+        DraftCustomEnd = new DateOnly(t.Year, t.Month, DateTime.DaysInMonth(t.Year, t.Month));
+    }
+
+    private void PickLastMonthRange()
+    {
+        var t = DateTime.Today.AddMonths(-1);
+        DraftCustomStart = new DateOnly(t.Year, t.Month, 1);
+        DraftCustomEnd = new DateOnly(t.Year, t.Month, DateTime.DaysInMonth(t.Year, t.Month));
+    }
+
+    private void PickLast7Days()
+    {
+        var end = DateOnly.FromDateTime(DateTime.Today);
+        DraftCustomStart = end.AddDays(-6);
+        DraftCustomEnd = end;
+    }
+
+    private void PickLast30Days()
+    {
+        var end = DateOnly.FromDateTime(DateTime.Today);
+        DraftCustomStart = end.AddDays(-29);
+        DraftCustomEnd = end;
+    }
+
+    private void PickAllRange()
+    {
+        DraftCustomStart = new DateOnly(2020, 1, 1);
+        DraftCustomEnd = DateOnly.FromDateTime(DateTime.Today);
+    }
+
+    private string FormatRangeLine() => $"{FormatCn(StatsRangeStart)}~{FormatCn(StatsRangeEnd)}";
+
+    private string FormatRangeLineDraft()
+    {
+        if (RangePickerMode == StatsRangePickerMode.Year)
+        {
+            var s = new DateOnly(PickerYear, 1, 1);
+            var e = new DateOnly(PickerYear, 12, 31);
+            return $"{FormatCn(s)}~{FormatCn(e)}";
+        }
+
+        if (DraftCustomStart is { } a && DraftCustomEnd is { } b)
+        {
+            var s = a <= b ? a : b;
+            var e = a <= b ? b : a;
+            return $"{FormatCn(s)}~{FormatCn(e)}";
+        }
+
+        return "请选择日期";
+    }
+
+    private static string FormatCn(DateOnly d) => $"{d.Year}年{d.Month:D2}月{d.Day:D2}日";
+
+    private void TogglePerson(StatsPerson p)
+    {
+        if (SelectedPersons.Contains(p) && SelectedPersons.Count == 1)
+        {
+            return;
+        }
+
+        if (SelectedPersons.Contains(p))
+        {
+            SelectedPersons.Remove(p);
+        }
+        else
+        {
+            SelectedPersons.Add(p);
+        }
+    }
+
+    private IEnumerable<StatsPerson> OrderedSelectedPersons()
+    {
+        foreach (var p in new[] { StatsPerson.Yiyi, StatsPerson.Yiyi2, StatsPerson.Total })
+        {
+            if (SelectedPersons.Contains(p))
+            {
+                yield return p;
+            }
+        }
+    }
+
+    private static string GetPersonTitle(StatsPerson p) => p switch
+    {
+        StatsPerson.Yiyi => "依依",
+        StatsPerson.Yiyi2 => "一一",
+        _ => "共计"
+    };
+
+    private static string MockExpense(StatsPerson p) => p switch
+    {
+        StatsPerson.Yiyi => "3,280.50",
+        StatsPerson.Yiyi2 => "2,910.00",
+        _ => "6,190.50"
+    };
+
+    private static string MockIncome(StatsPerson p) => p switch
+    {
+        StatsPerson.Yiyi => "5,000.00",
+        StatsPerson.Yiyi2 => "4,200.00",
+        _ => "9,200.00"
+    };
+
+    private static string MockBalance(StatsPerson p) => p switch
+    {
+        StatsPerson.Yiyi => "1,719.50",
+        StatsPerson.Yiyi2 => "1,290.00",
+        _ => "3,009.50"
+    };
+
+    private static string MockBalanceClass(StatsPerson _) => "income";
+
+    private void ToggleCatExpand(string key)
+    {
+        if (!ExpandedCategoryKeys.Add(key))
+        {
+            ExpandedCategoryKeys.Remove(key);
+        }
+    }
+
+    private sealed record SubCatRow(string Name, string Amount, string Pct, int BarPct);
+    private sealed record CatRow(string Key, string Name, string Amount, string Pct, int BarPct, SubCatRow[] Subs);
+
+    private static CatRow[] MockCategoryRows(StatsPerson p)
+    {
+        var tag = p == StatsPerson.Total ? "（共计示意）" : "";
+        return new[]
+        {
+            new CatRow(
+                "food",
+                "餐饮" + tag,
+                "1,680.00",
+                "32%",
+                72,
+                new[]
+                {
+                    new SubCatRow("外卖", "920.00", "17%", 48),
+                    new SubCatRow("无子类别", "760.00", "15%", 40)
+                }),
+            new CatRow(
+                "traffic",
+                "交通" + tag,
+                "980.00",
+                "19%",
+                55,
+                Array.Empty<SubCatRow>()),
+            new CatRow(
+                "shop",
+                "购物" + tag,
+                "640.00",
+                "12%",
+                36,
+                new[]
+                {
+                    new SubCatRow("日用", "400.00", "8%", 28),
+                    new SubCatRow("服饰", "240.00", "4%", 18)
+                })
+        };
+    }
+}
