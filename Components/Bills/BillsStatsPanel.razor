@@ -163,7 +163,9 @@
                     var chart = BuildTrendChart(pts, StatsRangeStart, StatsRangeEnd, chartIdx);
                     <section class="stats-card stats-detail-card">
                         <div class="stats-detail-head">
-                            <div class="stats-card-title">月趋势图 · @GetPersonTitle(p)</div>
+                            <div class="stats-card-title stats-cat-section-title">
+                                <span class="stats-cat-section-label">月趋势图</span>　<span class="stats-cat-section-name">@GetPersonTitle(p)</span>
+                            </div>
                             <label class="stats-io-switch">
                                 <span class="@(TrendIoExpense ? "on" : "")">支出</span>
                                 <button type="button"
