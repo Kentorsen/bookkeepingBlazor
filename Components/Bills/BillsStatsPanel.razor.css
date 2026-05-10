@@ -3,6 +3,9 @@
     flex-direction: column;
     gap: 6px;
     padding-bottom: 4px;
+    scrollbar-gutter: stable;
+    /* 折线区域填充 = Tab 选中底，改一处即可同步 */
+    --stats-chart-area-fill: rgba(255, 224, 130, 0.34);
 }
 
 .stats-card {
@@ -55,8 +58,8 @@
 
 .stats-link-btn {
     border: none;
-    background: #ffe6ef;
-    color: #b66a87;
+    background: rgba(255, 224, 130, .22);
+    color: #5d4037;
     font-size: 13px;
     font-weight: 700;
     padding: 7px 11px;
@@ -67,12 +70,65 @@
     transform: scale(0.98);
 }
 
+/* 统计 Tab：描边用 inset box-shadow，避免 border+圆角锯齿、双边加粗、边缘被裁切 */
 .stats-tabs-card {
-    padding: 6px 6px 7px;
+    padding: 8px 10px;
+    overflow: visible;
+}
+
+.stats-tabs-card .stats-seg-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 0;
+    background: transparent;
+    border-radius: 0;
+    border: none;
+}
+
+.stats-tabs-card .stats-seg-stack .stats-seg-row2 {
+    border-top: none;
+}
+
+.stats-tabs-card .stats-seg-stack .stats-seg-btn + .stats-seg-btn {
+    border-left: none;
+}
+
+.stats-tabs-card .stats-seg-stack .stats-seg {
+    gap: 4px;
+    border: none;
+    border-radius: 0;
+    overflow: visible;
+    background: transparent;
+}
+
+.stats-tabs-card .stats-seg-btn {
+    background: #fff;
+    color: #455064;
+    font-size: 12px;
+    font-weight: 700;
+    padding: 8px 6px;
+    min-height: 36px;
+    line-height: 1.2;
+    border-radius: 8px;
+    border: none;
+    box-shadow: inset 0 0 0 1px rgba(15, 23, 42, .11);
+    transition: background-color .12s ease, color .12s ease, box-shadow .12s ease;
+}
+
+.stats-tabs-card .stats-seg-btn:active {
+    opacity: .94;
+}
+
+.stats-tabs-card .stats-seg-stack .stats-seg-btn.active {
+    background: var(--stats-chart-area-fill);
+    color: #5d4037;
+    font-weight: 800;
+    box-shadow: inset 0 0 0 1px rgba(200, 160, 75, .42);
 }
 
 .stats-seg-stack {
-    border: 1px solid #f0d7e0;
+    border: 1px solid #e2e8f0;
     border-radius: 8px;
     overflow: hidden;
     background: #fff;
@@ -84,7 +140,7 @@
 }
 
 .stats-seg-stack .stats-seg-row2 {
-    border-top: 1px solid #f0e4ea;
+    border-top: 1px solid #e2e8f0;
 }
 
 .stats-seg {
@@ -92,7 +148,7 @@
     gap: 0;
     border-radius: 8px;
     overflow: hidden;
-    border: 1px solid #f0d7e0;
+    border: 1px solid #e2e8f0;
 }
 
 .stats-seg-2 {
@@ -106,7 +162,7 @@
 .stats-seg-btn {
     border: none;
     background: #fff;
-    color: #6f7990;
+    color: #455064;
     font-size: 12px;
     font-weight: 700;
     padding: 5px 4px;
@@ -115,12 +171,12 @@
 }
 
 .stats-seg-btn + .stats-seg-btn {
-    border-left: 1px solid #f0e4ea;
+    border-left: 1px solid #e2e8f0;
 }
 
-.stats-seg-btn.active {
-    background: #ef9cb8;
-    color: #fff;
+.stats-seg-stack .stats-seg-btn.active {
+    background: var(--stats-chart-area-fill);
+    color: #5d4037;
 }
 
 .stats-result-empty {
@@ -162,7 +218,7 @@
 .stats-sub-title {
     font-size: 12px;
     font-weight: 800;
-    color: #ef9cb8;
+    color: #1a1d26;
     margin-bottom: 5px;
 }
 
@@ -203,6 +259,17 @@
 .stats-detail-head .stats-card-title {
     margin-bottom: 0;
     flex: 1 1 auto;
+}
+
+.stats-cat-section-title {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 0;
+}
+
+.stats-cat-section-name {
+    color: #D48806;
 }
 
 .stats-io-switch {
@@ -261,104 +328,219 @@
 
 .stats-cat-block:first-of-type {
     border-top: none;
-    padding-top: 1px;
+    padding-top: 0;
 }
 
-.stats-cat-main {
+.stats-cat-head {
+    display: flex;
+    align-items: flex-start;
+    gap: 4px;
     width: 100%;
+    box-sizing: border-box;
+}
+
+.stats-cat-head-main {
     border: none;
     background: transparent;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 6px;
-    padding: 1px 0 4px;
     font: inherit;
-    text-align: left;
     color: inherit;
+    text-align: left;
+    padding: 2px 0 0;
+    margin: 0;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
 }
 
-.stats-cat-name {
+.stats-cat-head-main:active {
+    opacity: .92;
+}
+
+.stats-cat-head-sub {
+    padding: 2px 0 0;
+}
+
+.stats-cat-head-text {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.stats-cat-name-pct {
     font-size: 12px;
     font-weight: 700;
     color: #27314a;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
-.stats-cat-meta {
-    font-size: 11px;
-    font-weight: 700;
-    color: #6f7890;
+.stats-cat-amount {
+    font-size: 12px;
+    font-weight: 800;
+    color: #4f5972;
     flex-shrink: 0;
+    white-space: nowrap;
 }
 
-.stats-bar-track {
-    position: relative;
-    height: 18px;
-    border-radius: 5px;
+.stats-cat-bar-line {
+    margin: 4px 0 0 0;
+}
+
+.stats-cat-bar-line-sub {
+    margin-top: 3px;
+}
+
+.stats-bar-line-track {
+    display: block;
+    width: 100%;
+    height: 7px;
+    border-radius: 999px;
     background: #ffeaf1;
     overflow: hidden;
 }
 
-.stats-bar-sub {
-    height: 16px;
-    margin-top: 4px;
-    border-radius: 4px;
+.stats-bar-line-track-sub {
+    height: 6px;
 }
 
-.stats-bar-fill {
-    position: absolute;
-    left: 0;
-    top: 0;
-    bottom: 0;
+.stats-bar-line-fill {
+    display: block;
+    height: 100%;
+    border-radius: 999px;
     background: linear-gradient(90deg, #f5b8cc, #ef9cb8);
-    border-radius: 5px;
     max-width: 100%;
 }
 
-.stats-bar-sub .stats-bar-fill {
-    border-radius: 4px;
+.stats-cat-bars-income .stats-bar-line-track {
+    background: #e3f4ea;
 }
 
-.stats-bar-label {
-    position: absolute;
-    inset: 0;
+.stats-cat-bars-income .stats-bar-line-fill {
+    background: linear-gradient(90deg, #7dcea5, #3aa76d);
+}
+
+.stats-cat-sub-wrap {
+    padding: 4px 0 0 10px;
+}
+
+.stats-cat-sub-item + .stats-cat-sub-item {
+    margin-top: 6px;
+}
+
+.stats-trend-chart {
     display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    padding: 0 6px;
-    font-size: 10px;
-    font-weight: 800;
-    color: #4f2f3d;
-    text-shadow: 0 0 5px rgba(255, 255, 255, .92);
-    pointer-events: none;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    align-items: stretch;
+    gap: 0;
+    margin-top: 4px;
+    /* 与 BuildTrendChart：topPad+plotH+bottomPad = 10+168+34 */
+    min-height: 212px;
 }
 
-.stats-cat-sub {
-    padding: 2px 0 1px 8px;
+/* 与 BuildTrendChart 一致：plotTop=28，bottomPad=34；窄轨贴滚动区左缘 */
+.stats-trend-y-rail {
+    flex: 0 0 26px;
+    display: flex;
+    flex-direction: column;
+    padding: 28px 0 34px 0;
+    box-sizing: border-box;
 }
 
-.stats-chart-placeholder {
-    margin-top: 3px;
-    border-radius: 8px;
-    background: linear-gradient(180deg, #fff7fa, #fff);
-    border: 1px dashed #f0d7e0;
-    padding: 5px;
+.stats-trend-y-vals {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    min-height: 0;
+    font-size: 11px;
+    font-weight: 700;
+    color: #64748b;
+    text-align: right;
+    line-height: 1.15;
+    letter-spacing: -0.02em;
 }
 
-.stats-chart-svg {
-    width: 100%;
-    height: 96px;
+.stats-trend-scroll {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+    background: transparent;
+    border: none;
+    border-radius: 0;
+}
+
+.stats-trend-svg {
     display: block;
+    min-height: 212px;
+}
+
+.stats-trend-area {
+    fill: var(--stats-chart-area-fill);
+}
+
+.stats-trend-area,
+.stats-trend-stroke-line {
+    pointer-events: none;
+}
+
+.stats-trend-axis-line {
+    stroke: #94a3b8;
+    pointer-events: none;
+}
+
+.stats-trend-stroke-line {
+    stroke: #e65100;
+}
+
+.stats-trend-dot {
+    fill: #fff;
+    stroke: #e65100;
+    stroke-width: 2px;
+    cursor: pointer;
+    pointer-events: all;
+}
+
+.stats-trend-dot.selected {
+    fill: #FFF8E1;
+    stroke: #bf360c;
+    stroke-width: 2px;
+}
+
+.stats-trend-hint {
+    text-align: center;
+    font-size: 12px;
+    font-weight: 700;
+    color: #5d4037;
+    margin-top: 2px;
+    margin-bottom: 0;
+    padding: 3px 8px;
+    background: rgba(255, 224, 130, .15);
+    border-radius: 8px;
+    border: 1px solid rgba(255, 224, 130, .65);
+}
+
+.stats-trend-empty {
+    padding: 36px 16px;
+    text-align: center;
+    font-size: 12px;
+    font-weight: 700;
+    color: #9aa3b5;
+    min-width: 200px;
 }
 
 .stats-chart-caption {
     text-align: center;
-    font-size: 10px;
+    font-size: 11px;
     color: #9aa3b5;
-    margin-top: 2px;
+    margin-top: 0;
+    padding-top: 0;
+    line-height: 1.35;
 }
 
 .stats-picker-mask {
@@ -392,8 +574,35 @@
     text-align: center;
 }
 
-.stats-picker-tabs {
+.stats-seg.stats-picker-tabs {
     margin-top: 2px;
+    gap: 4px;
+    padding: 0;
+    background: transparent;
+    border-radius: 0;
+    border: none;
+    overflow: visible;
+}
+
+.stats-picker-tabs .stats-seg-btn + .stats-seg-btn {
+    border-left: none;
+}
+
+.stats-picker-tabs .stats-seg-btn {
+    background: #fff;
+    color: #455064;
+    border-radius: 8px;
+    border: none;
+    box-shadow: inset 0 0 0 1px rgba(15, 23, 42, .11);
+    min-height: 36px;
+    padding: 8px 6px;
+}
+
+.stats-picker-tabs .stats-seg-btn.active {
+    background: var(--stats-chart-area-fill);
+    color: #5d4037;
+    font-weight: 800;
+    box-shadow: inset 0 0 0 1px rgba(200, 160, 75, .42);
 }
 
 .stats-year-stepper {
@@ -446,8 +655,8 @@
 }
 
 .stats-chip:active {
-    background: #ffe6ef;
-    color: #b66a87;
+    background: rgba(255, 224, 130, .35);
+    color: #5d4037;
 }
 
 .stats-date-row {
@@ -502,8 +711,9 @@
 }
 
 .stats-btn.primary {
-    background: #ef9cb8;
-    color: #fff;
+    background: #FFE082;
+    color: #5d4037;
+    font-weight: 800;
 }
 
 /* Blazor InputDate renders an input; keep width inside row */
@@ -517,4 +727,28 @@
     padding: 0 10px;
     font-size: 14px;
     box-sizing: border-box;
+}
+
+.stats-loading {
+    text-align: center;
+    padding: 24px 12px;
+    font-size: 14px;
+    font-weight: 700;
+    color: #8e96a8;
+}
+
+.stats-error-card {
+    color: #c44;
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.stats-muted {
+    font-size: 12px;
+    color: #9aa3b5;
+    padding: 6px 0 2px;
+}
+
+.stats-chart-flat {
+    opacity: 0.85;
 }

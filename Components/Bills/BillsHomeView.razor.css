@@ -1084,6 +1084,7 @@
 
 .bill-app.stats-screen {
     overflow-y: auto;
+    scrollbar-gutter: stable;
     padding-bottom: 56px;
 }
 
